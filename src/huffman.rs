@@ -69,7 +69,7 @@ impl Queue {
         }
     }
 
-    // Could return Result / Option     for safety
+    // Could return Result / Option for safety (but it should never fail with Huffman)
     fn pop_min(&mut self) -> Box<Node> {
         // Return item at [0], swap with last
         let min = self.heap.swap_remove(0);
@@ -84,12 +84,11 @@ impl Queue {
 }
 
 pub struct HuffmanTree {
-    root: Option<Box<Node>>,
-    queue: Queue,
+    root: Box<Node>,
 }
 
 impl HuffmanTree {
-    // Build a queue from str, root is None
+    // Build a tree from string using helper Self::build() via queue 
     pub fn from(text: &str) -> Self {
         let mut freqs = [0usize; 256];
         let mut queue = Queue::new();
@@ -102,26 +101,21 @@ impl HuffmanTree {
         freqs.into_iter()
             .enumerate()
             .filter(|&(_, freq)| freq != 0)
-            .for_each(|(byte, freq)| {
+            .for_each(|(byte, freq)|
                 queue.add(Box::new(Node::new(byte as u8, freq)))
-            });
+            );
 
-        let mut tree = HuffmanTree {
-            root: None,
-            queue,
-        };
-
-        tree.build();
-        tree
+        Self {
+            root: Self::build(&mut queue)
+        }
     }
 
-    // Build a tree from queue, store root
-    // TODO (?): make build consume queue?
-    pub fn build(&mut self) {
-        // TODO: handle len() == 1
-        while self.queue.heap.len() > 1 {
-            let left = self.queue.pop_min();
-            let right = self.queue.pop_min();
+    // Builds tree from queue, returns root Box<Node>
+    // TODO: handle len() == 1
+    fn build(queue: &mut Queue) -> Box<Node> {
+        while queue.heap.len() > 1 {
+            let left = queue.pop_min();
+            let right = queue.pop_min();
             let freq = left.freq + right.freq;
 
             let combined = Box::new(Node {
@@ -131,32 +125,33 @@ impl HuffmanTree {
                 freq,
             });
 
-            self.queue.add(combined);
+            queue.add(combined);
         }
-        
-        self.root = Some(self.queue.pop_min());
+
+        queue.pop_min()
     }
 
-    pub fn print_codes(&self) {
+    pub fn print(&self) {
+        // self.root &Box<Node> automatically dereferences to &Node
+        // &* is more explicit and somehow equivalent (first dereferencing the box to Node, later obtaining &Node)
         Self::print_recursive(&self.root, String::new());
     }
 
-    // Recursive helper function
-    fn print_recursive(node: &Option<Box<Node>>, prefix: String) {
-        // 1. Check if node exists (equivalent to C++ `if (!node) return`)
-        if let Some(n) = node {
-            
-            // 2. Check if it's a leaf node (equivalent to `node->c != '\0'`)
-            // In your build() function, internal nodes have `byte: None`
-            if let Some(b) = n.byte {
-                println!("'{}': {}", b as char, prefix);
-            }
+    fn print_recursive(node: &Node, prefix: String) {
+        // Node is a leaf
+        if let Some(b) = node.byte {
+            println!("'{}': {}", b as char, prefix);
+            return;
+        }
 
-            // 3. Recurse left (prefix + "0")
-            Self::print_recursive(&n.left, format!("{}0", prefix));
+        // If left child exists, recurse
+        if let Some(left_node) = &node.left {
+            Self::print_recursive(left_node, format!("{}0", prefix));
+        }
 
-            // 4. Recurse right (prefix + "1")
-            Self::print_recursive(&n.right, format!("{}1", prefix));
+        // If right child exists, recurse
+        if let Some(right_node) = &node.right {
+            Self::print_recursive(right_node, format!("{}1", prefix));
         }
     }
 }

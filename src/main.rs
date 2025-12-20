@@ -6,13 +6,14 @@ struct Node {
 }
 
 impl Node {
-    // fn new(byte: u8, freq: usize) -> Self {
-    //     Self {
-    //         left: None,
-    //         right: None,
-    //         byte, freq
-    //     } 
-    // }
+    fn new(byte: u8, freq: usize) -> Self {
+        Self {
+            left: None,
+            right: None,
+            byte: Some(byte),
+            freq
+        } 
+    }
 }
 
 struct Queue {
@@ -101,9 +102,10 @@ impl HuffmanTree {
             .enumerate()
             .for_each(|(byte, freq)| {
                 if freq != 0 {
-                    tree.queue.add(Box::new(Node {
-                        left: None, right: None, byte: Some(byte as u8), freq: freq
-                    }));
+                    tree.queue.add(Box::new(Node::new(byte as u8, freq)))
+                    // tree.queue.add(Box::new(Node {
+                    //     left: None, right: None, byte: Some(byte as u8), freq: freq
+                    // }));
                 }
             });
         tree

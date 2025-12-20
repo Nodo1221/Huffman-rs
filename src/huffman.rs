@@ -17,10 +17,16 @@ impl Node {
 }
 
 struct Queue {
-    heap: Vec<Box<Node>>
+    heap: Vec<Box<Node>>,
 }
 
 impl Queue {
+    fn new() -> Self {
+        Self {
+            heap: Vec::new()
+        }
+    }
+
     fn heapify(&mut self, i: usize) {
         if self.heap.len() < 2 {
             return;
@@ -63,7 +69,7 @@ impl Queue {
         }
     }
 
-    // Could return Option for safety
+    // Could return Result / Option     for safety
     fn pop_min(&mut self) -> Box<Node> {
         // Return item at [0], swap with last
         let min = self.heap.swap_remove(0);
@@ -83,34 +89,37 @@ pub struct HuffmanTree {
 }
 
 impl HuffmanTree {
-    // Build a queue from str
+    // Build a queue from str, root is None
     pub fn from(text: &str) -> Self {
         let mut freqs = [0usize; 256];
-        let mut queue = Queue {heap: Vec::new()};
+        let mut queue = Queue::new();
 
         for byte in text.bytes() {
             freqs[byte as usize] += 1;
         }
 
         // .into_iter() creates an iterator of values (not references)
-        // TODO: tidy this up
         freqs.into_iter()
             .enumerate()
+            .filter(|&(_, freq)| freq != 0)
             .for_each(|(byte, freq)| {
-                if freq != 0 {
-                    queue.add(Box::new(Node::new(byte as u8, freq)))
-                }
+                queue.add(Box::new(Node::new(byte as u8, freq)))
             });
 
-        HuffmanTree {
+        let mut tree = HuffmanTree {
             root: None,
             queue,
-        }
+        };
+
+        tree.build();
+        tree
     }
 
     // Build a tree from queue, store root
+    // TODO (?): make build consume queue?
     pub fn build(&mut self) {
-        while self.queue.heap.len() > 1{
+        // TODO: handle len() == 1
+        while self.queue.heap.len() > 1 {
             let left = self.queue.pop_min();
             let right = self.queue.pop_min();
             let freq = left.freq + right.freq;
@@ -124,6 +133,7 @@ impl HuffmanTree {
 
             self.queue.add(combined);
         }
+        
         self.root = Some(self.queue.pop_min());
     }
 

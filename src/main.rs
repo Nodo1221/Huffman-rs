@@ -78,19 +78,15 @@ impl Queue {
 }
 
 struct HuffmanTree {
-    root: Box<Node>,
+    root: Option<Box<Node>>,
     queue: Queue,
 }
 
 impl HuffmanTree {
     // Build a queue from str
     fn from(text: &str) -> Self {
-        let mut tree = HuffmanTree {
-            // temp
-            root: Box::new(Node {left: None, right: None, byte: None, freq: 0}),
-            queue: Queue {heap: Vec::new()}
-        };
         let mut freqs = [0usize; 256];
+        let mut queue = Queue {heap: Vec::new()};
 
         for byte in text.bytes() {
             freqs[byte as usize] += 1;
@@ -102,13 +98,14 @@ impl HuffmanTree {
             .enumerate()
             .for_each(|(byte, freq)| {
                 if freq != 0 {
-                    tree.queue.add(Box::new(Node::new(byte as u8, freq)))
-                    // tree.queue.add(Box::new(Node {
-                    //     left: None, right: None, byte: Some(byte as u8), freq: freq
-                    // }));
+                    queue.add(Box::new(Node::new(byte as u8, freq)))
                 }
             });
-        tree
+
+        HuffmanTree {
+            root: None,
+            queue,
+        }
     }
 
     // Build a tree from queue, store root
@@ -124,29 +121,39 @@ impl HuffmanTree {
                 byte: None,
                 freq,
             });
+
+            self.queue.add(combined);
         }
-        self.root = self.queue.pop_min();
+        self.root = Some(self.queue.pop_min());
     }
 
-    fn print_tree(&mut self, node: &Option<Box<Node>>, prefix: String) {
-    // 1. Base case: Handle the "if (!node)" check
-    // If 'node' is Some(n), we proceed. If None, we do nothing (return).
-    if let Some(n) = node {
-        
-        // 2. Print if leaf: Handle "if (node->c != '\0')"
-        // Assuming your Node struct uses Option<u8> for 'byte'
-        if let Some(b) = n.byte {
-            println!("{}: {}", b as char, prefix);
-        }
-
-        // 3. Recursive calls
-        // We use format! to create the new string "prefix + '0'"
-        self.print_tree(&n.left, format!("{}0", prefix));
-        self.print_tree(&n.right, format!("{}1", prefix));
+    pub fn print_codes(&self) {
+        Self::print_recursive(&self.root, String::new());
     }
-}
+
+    // Recursive helper function
+    fn print_recursive(node: &Option<Box<Node>>, prefix: String) {
+        // 1. Check if node exists (equivalent to C++ `if (!node) return`)
+        if let Some(n) = node {
+            
+            // 2. Check if it's a leaf node (equivalent to `node->c != '\0'`)
+            // In your build() function, internal nodes have `byte: None`
+            if let Some(b) = n.byte {
+                println!("'{}': {}", b as char, prefix);
+            }
+
+            // 3. Recurse left (prefix + "0")
+            Self::print_recursive(&n.left, format!("{}0", prefix));
+
+            // 4. Recurse right (prefix + "1")
+            Self::print_recursive(&n.right, format!("{}1", prefix));
+        }
+    }
 }
 
 fn main() {
+    let mut tree = HuffmanTree::from("aaaaaabbbdddeeeeffdfadskfbbbbbbbbbbbbgdsakfds");
 
+    tree.build();
+    tree.print_codes();
 }

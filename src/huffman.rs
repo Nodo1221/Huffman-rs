@@ -124,7 +124,7 @@ impl HuffmanTree {
 
     fn into_str(code: &Vec<bool>) -> String {
         code.iter()
-            .map(|&b| if b {'0'} else {'1'})
+            .map(|&b| if b {'1'} else {'0'})
             .collect()
     }
 
@@ -149,31 +149,34 @@ impl HuffmanTree {
         queue.pop_min()
     }
 
+    // Return a hashtable of codes
     fn gen_lookup(root: &Box<Node>) -> HashMap<u8, Vec<bool>> {
         let mut codes = HashMap::new();
-        Self::lookup_recurse(root, Vec::new(), &mut codes);
+        let mut prefix_buffer = Vec::new();
+        Self::lookup_recurse(root, &mut prefix_buffer, &mut codes);        
         codes
     }
 
-    fn lookup_recurse(node: &Node, prefix: Vec<bool>, map: &mut HashMap<u8, Vec<bool>>) {
+    fn lookup_recurse(node: &Node, prefix: &mut Vec<bool>, map: &mut HashMap<u8, Vec<bool>>) {
         // Node is a leaf
         if let Some(b) = node.byte {
-            map.insert(b, prefix);
+            map.insert(b, prefix.clone());
             return;
         }
 
-        // If left exists, recurse (new prefix + '0')
+        // If left exists, recurse
         if let Some(left_node) = &node.left {
-            let mut new_prefix = prefix.clone();
-            new_prefix.push(false);
-            Self::lookup_recurse(left_node, new_prefix, map);
+            // Run Self::lookup_recurse with a temporarily modified vec (then backtrack -- drop the appendix)
+            prefix.push(false);
+            Self::lookup_recurse(left_node, prefix, map);
+            prefix.pop();
         }
 
-        // If left exists, recurse (new prefix + '1')
+        // If right exists, recurse
         if let Some(right_node) = &node.right {
-            let mut new_prefix = prefix.clone();
-            new_prefix.push(true);
-            Self::lookup_recurse(right_node, new_prefix, map);
+            prefix.push(true);
+            Self::lookup_recurse(right_node, prefix, map);
+            prefix.pop();
         }
     }
 }

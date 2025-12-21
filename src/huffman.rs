@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 struct Node {
     left: Option<Box<Node>>,
     right: Option<Box<Node>>,
@@ -85,6 +87,7 @@ impl Queue {
 
 pub struct HuffmanTree {
     root: Box<Node>,
+    lookup: HashMap<u8, Vec<bool>>,
 }
 
 impl HuffmanTree {
@@ -105,9 +108,10 @@ impl HuffmanTree {
                 queue.add(Box::new(Node::new(byte as u8, freq)))
             );
 
-        Self {
-            root: Self::build(&mut queue)
-        }
+        let root = Self::build(&mut queue);
+        let lookup = Self::gen_lookup(&root);
+
+        Self { root, lookup }
     }
 
     // Builds tree from queue, returns root Box<Node>
@@ -129,6 +133,35 @@ impl HuffmanTree {
         }
 
         queue.pop_min()
+    }
+
+    fn gen_lookup(root: &Box<Node>) -> HashMap<u8, Vec<bool>> {
+        let mut codes = HashMap::new();
+        Self::lookup_recurse(root, Vec::new(), &mut codes);
+        codes
+    }
+
+    // 2. The recursive helper
+    fn lookup_recurse(node: &Node, prefix: Vec<bool>, map: &mut HashMap<u8, Vec<bool>>) {
+        // Node is a leaf: Insert the byte and its path into the map
+        if let Some(b) = node.byte {
+            map.insert(b, prefix);
+            return;
+        }
+
+        // If left child exists, recurse with 0 (false)
+        if let Some(left_node) = &node.left {
+            let mut new_prefix = prefix.clone();
+            new_prefix.push(false); // 0
+            Self::lookup_recurse(left_node, new_prefix, map);
+        }
+
+        // If right child exists, recurse with 1 (true)
+        if let Some(right_node) = &node.right {
+            let mut new_prefix = prefix.clone();
+            new_prefix.push(true); // 1
+            Self::lookup_recurse(right_node, new_prefix, map);
+        }
     }
 
     pub fn print(&self) {

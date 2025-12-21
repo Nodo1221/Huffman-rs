@@ -65,7 +65,7 @@ impl Queue {
         }
     }
 
-    fn build_heap(&mut self) {
+    fn _build_heap(&mut self) {
         for i in (0..=(self.heap.len() / 2 - 1)).rev() {
             self.heapify(i);
         }
@@ -86,7 +86,7 @@ impl Queue {
 }
 
 pub struct HuffmanTree {
-    root: Box<Node>,
+    _root: Box<Node>,
     lookup: HashMap<u8, Vec<bool>>,
 }
 
@@ -111,7 +111,7 @@ impl HuffmanTree {
         let root = Self::build(&mut queue);
         let lookup = Self::gen_lookup(&root);
 
-        Self { root, lookup }
+        Self { _root: root, lookup }
     }
 
     // Builds tree from queue, returns root Box<Node>
@@ -143,48 +143,38 @@ impl HuffmanTree {
 
     // 2. The recursive helper
     fn lookup_recurse(node: &Node, prefix: Vec<bool>, map: &mut HashMap<u8, Vec<bool>>) {
-        // Node is a leaf: Insert the byte and its path into the map
+        // Node is a leaf
         if let Some(b) = node.byte {
             map.insert(b, prefix);
             return;
         }
 
-        // If left child exists, recurse with 0 (false)
+        // If left exists, recurse (new prefix + '0')
         if let Some(left_node) = &node.left {
             let mut new_prefix = prefix.clone();
-            new_prefix.push(false); // 0
+            new_prefix.push(false);
             Self::lookup_recurse(left_node, new_prefix, map);
         }
 
-        // If right child exists, recurse with 1 (true)
+        // If left exists, recurse (new prefix + '1')
         if let Some(right_node) = &node.right {
             let mut new_prefix = prefix.clone();
-            new_prefix.push(true); // 1
+            new_prefix.push(true);
             Self::lookup_recurse(right_node, new_prefix, map);
         }
     }
-
-    pub fn print(&self) {
-        // self.root &Box<Node> automatically dereferences to &Node
-        // &* is more explicit and somehow equivalent (first dereferencing the box to Node, later obtaining &Node)
-        Self::print_recursive(&self.root, String::new());
+    
+    fn into_str(code: &Vec<bool>) -> String {
+        code.iter()
+            .map(|&b| if b {'0'} else {'1'})
+            .collect()
     }
 
-    fn print_recursive(node: &Node, prefix: String) {
-        // Node is a leaf
-        if let Some(b) = node.byte {
-            println!("'{}': {}", b as char, prefix);
-            return;
-        }
-
-        // If left child exists, recurse
-        if let Some(left_node) = &node.left {
-            Self::print_recursive(left_node, format!("{}0", prefix));
-        }
-
-        // If right child exists, recurse
-        if let Some(right_node) = &node.right {
-            Self::print_recursive(right_node, format!("{}1", prefix));
-        }
+    pub fn print(&self) {
+        // Non owning iter
+        self.lookup.iter()
+            .for_each(|(byte, code)| {
+                println!("'{}': {}", *byte as char, Self::into_str(code));
+            });
     }
 }

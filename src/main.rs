@@ -4,6 +4,6 @@ use huffman::HuffmanTree;
 
 fn main() {
     let data = "aaaaaabbbdddeeeeffdfadskfbbbbbbbbbbbbgdsakfds";
-    let tree = HuffmanTree::from(data);
+    let tree = HuffmanTree::from(data.into());
     tree.print();
 }

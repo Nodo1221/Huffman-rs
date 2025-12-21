@@ -92,11 +92,11 @@ pub struct HuffmanTree {
 
 impl HuffmanTree {
     // Build a tree from string using helper Self::build() via queue 
-    pub fn from(text: &str) -> Self {
+    pub fn from(data: Vec<u8>) -> Self {
         let mut freqs = [0usize; 256];
         let mut queue = Queue::new();
 
-        for byte in text.bytes() {
+        for byte in data {
             freqs[byte as usize] += 1;
         }
 
@@ -112,6 +112,20 @@ impl HuffmanTree {
         let lookup = Self::gen_lookup(&root);
 
         Self { _root: root, lookup }
+    }
+
+    pub fn print(&self) {
+        // Non owning iter
+        self.lookup.iter()
+            .for_each(|(byte, code)| {
+                println!("'{}': {}", *byte as char, Self::into_str(code));
+            });
+    }
+
+    fn into_str(code: &Vec<bool>) -> String {
+        code.iter()
+            .map(|&b| if b {'0'} else {'1'})
+            .collect()
     }
 
     // Builds tree from queue, returns root Box<Node>
@@ -141,7 +155,6 @@ impl HuffmanTree {
         codes
     }
 
-    // 2. The recursive helper
     fn lookup_recurse(node: &Node, prefix: Vec<bool>, map: &mut HashMap<u8, Vec<bool>>) {
         // Node is a leaf
         if let Some(b) = node.byte {
@@ -162,19 +175,5 @@ impl HuffmanTree {
             new_prefix.push(true);
             Self::lookup_recurse(right_node, new_prefix, map);
         }
-    }
-    
-    fn into_str(code: &Vec<bool>) -> String {
-        code.iter()
-            .map(|&b| if b {'0'} else {'1'})
-            .collect()
-    }
-
-    pub fn print(&self) {
-        // Non owning iter
-        self.lookup.iter()
-            .for_each(|(byte, code)| {
-                println!("'{}': {}", *byte as char, Self::into_str(code));
-            });
     }
 }

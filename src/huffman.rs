@@ -96,14 +96,13 @@ pub struct HuffmanTree {
 
 impl HuffmanTree {    
     // Could do via impl From
-    // Consider taking &[u8] instead
     // Builds a tree from string using helper Self::build() via queue 
-    pub fn from(data: Vec<u8>) -> Self {
+    pub fn from(data: &[u8]) -> Self {
         let mut freqs = [0usize; 256];
         let mut queue = Queue::new();
 
         for byte in data {
-            freqs[byte as usize] += 1;
+            freqs[*byte as usize] += 1;
         }
 
         // .into_iter() creates an iterator of values (not references)

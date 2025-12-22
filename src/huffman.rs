@@ -93,7 +93,8 @@ pub struct HuffmanTree {
 
 impl HuffmanTree {    
     // Could do via impl From
-    // Build a tree from string using helper Self::build() via queue 
+    // Consider taking &[u8] instead
+    // Builds a tree from string using helper Self::build() via queue 
     pub fn from(data: Vec<u8>) -> Self {
         let mut freqs = [0usize; 256];
         let mut queue = Queue::new();
@@ -124,6 +125,7 @@ impl HuffmanTree {
             });
     }
 
+    // TODO: handle broken trees
     pub fn encode(&self, data: &[u8]) -> BitData {
         let mut encoded = BitData::new();
 
@@ -143,21 +145,23 @@ impl HuffmanTree {
 
             for _ in 0..=7 {
                 if current & 0b1000_0000 != 0 {
+                    // Decoding 1, move head to right Node
                     head = head.right.as_ref().unwrap();
-                    // println!("decoding 1 ({:08b})", current);
+
+                    // Found a leaf
                     if let Some(byte) = &head.byte {
                         decoded.push(*byte);
-                        // println!("decoded: {}", *byte as char);
                         head = &self.root;
                     }
                 }
 
                 else {
+                    // Decoding 0, move head to right Node
                     head = head.left.as_ref().unwrap();
-                    // println!("decoding 0 ({:08b})", current);
+
+                    // Found a leaf
                     if let Some(byte) = &head.byte {
                         decoded.push(*byte);
-                        // println!("decoded: {}", *byte as char);
                         head = &self.root;
                     }
                 }
@@ -175,7 +179,7 @@ impl HuffmanTree {
             .collect()
     }
 
-    // Builds tree from queue, returns root Box<Node>
+    // Builds a tree from queue, returns root Box<Node>
     // TODO: handle len() == 1
     fn build(queue: &mut Queue) -> Box<Node> {
         while queue.heap.len() > 1 {

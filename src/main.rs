@@ -11,12 +11,11 @@ macro_rules! bits {
 }
 
 fn main() {
-    let data = "aaaaaabccccccccbbdddeeeeffdfadskfbbbbbbbuuuubbbmbbgdsakfds";
+    let data = " aaaxaaannrbhwuuupuuuuuxhthkkkkxhccrxcccmmfffmxelllecxccx ";
     let tree = HuffmanTree::from(data.into());
 
-    let encoded: BitData = tree.encode(b"fuck");
+    let encoded: BitData = tree.encode(b"huffman tree example");
     let decoded: Vec<u8> = tree.decode(&encoded.data);
-
 
     println!("Source: \"{}\"\n", data);
     println!("Tree:");
@@ -26,4 +25,7 @@ fn main() {
     encoded.print();
 
     println!("\nDecoded: {}", decoded.iter().map(|x| char::from(*x)).collect::<String>());
+    println!("Original: {} bytes", data.len());
+    println!("Encoded: {} bytes", encoded.data.len());
+    println!("Ratio: {}%", encoded.data.len() as f32 / data.len() as f32 * 100.0);
 }

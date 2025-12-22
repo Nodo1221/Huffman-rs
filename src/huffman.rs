@@ -126,12 +126,11 @@ impl HuffmanTree {
             });
     }
 
-    // TODO: handle broken trees
     pub fn encode(&self, data: &[u8]) -> BitData {
         let mut encoded = BitData::new();
 
         data.into_iter()
-            .for_each(|raw_byte| encoded.write(&self.lookup[raw_byte]));
+            .for_each(|raw_byte| encoded.write(&self.lookup.get(raw_byte).expect("Broken tree! Missing key in lookup")));
 
         encoded
     }

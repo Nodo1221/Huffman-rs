@@ -12,7 +12,7 @@ macro_rules! bits {
 
 fn main() {
     let data = "huffman tree example";
-    let tree = HuffmanTree::from(data.as_bytes());
+    let tree = HuffmanTree::from(data);
 
     let encoded: BitData = tree.encode(data.as_bytes());
     let decoded: Vec<u8> = tree.decode(&encoded);

@@ -94,10 +94,22 @@ pub struct HuffmanTree {
     queue: Queue,
 }
 
+impl From<&str> for HuffmanTree {
+    fn from(data: &str) -> Self {
+        Self::from_bytes(data.as_bytes())
+    }
+}
+
+impl From<&[u8]> for HuffmanTree {
+    fn from(data: &[u8]) -> Self {
+        Self::from_bytes(data)
+    }
+}
+
 impl HuffmanTree {    
     // Could do via impl From
-    // Builds a tree from string using helper Self::build() via queue 
-    pub fn from(data: &[u8]) -> Self {
+    // Builds a tree from &[u8] using helper Self::build() via queue 
+    pub fn from_bytes(data: &[u8]) -> Self {
         let mut freqs = [0usize; 256];
         let mut queue = Queue::new();
 

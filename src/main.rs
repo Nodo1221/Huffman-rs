@@ -13,10 +13,10 @@ fn main() {
 
     let mut bitdata = BitData::new();
 
-    bitdata.write(&vec![false, true, true, false, true]);
-    bitdata.write(&vec![true, true]);
-    bitdata.write(&vec![true]);
-    bitdata.write(&vec![true, false, true, true, true, true, true, true, true]);
+    bitdata.write(&[false, true, true, false, true]);
+    bitdata.write(&[true, true]);
+    bitdata.write(&[false]);
+    bitdata.write(&[true, false, true, true, true, true, true, true, true]);
 
     bitdata.print();
 }

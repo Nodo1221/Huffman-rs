@@ -140,44 +140,72 @@ impl HuffmanTree {
     pub fn decode(&self, data: &BitData) -> Vec<u8> {
         let mut decoded: Vec<u8> = Vec::new();
         let mut head = &self.root;
-        // TODO: this logic can be replaced to work on total bits to read, with modulo. Branching inside a for loop is unnecessary
-        let mut read_bits = 8;
+        let stored_bits = 8 * (data.data.len() - 1) + data.offset;
+        println!("stored: {}", stored_bits);
+        println!("data len: {}", data.data.len());
 
-        for (i, &byte) in data.data.iter().enumerate() {
-            let mut current = byte;
-            
-            // Only read (offset) bits from the last byte
-            if (i == data.data.len() - 1) {
-                read_bits = data.offset;
+        for i in 0..stored_bits {
+            let current_byte = data.data[i / 8] << (i % 8);
+            if current_byte & 0b1000_0000 != 0 {
+                // Decoding 1, move head to right Node
+                // println!("decoding 1");
+                head = head.right.as_ref().unwrap();
+
+                // Found a leaf
+                if let Some(byte) = &head.byte {
+                    decoded.push(*byte);
+                    head = &self.root;
+                }
             }
 
-            for _ in 0..read_bits {
+            else {
+                // println!("decoding 0");
+                // Decoding 0, move head to right Node
+                head = head.left.as_ref().unwrap();
 
-                if current & 0b1000_0000 != 0 {
-                    // Decoding 1, move head to right Node
-                    head = head.right.as_ref().unwrap();
-
-                    // Found a leaf
-                    if let Some(byte) = &head.byte {
-                        decoded.push(*byte);
-                        head = &self.root;
-                    }
+                // Found a leaf
+                if let Some(byte) = &head.byte {
+                    decoded.push(*byte);
+                    head = &self.root;
                 }
-
-                else {
-                    // Decoding 0, move head to right Node
-                    head = head.left.as_ref().unwrap();
-
-                    // Found a leaf
-                    if let Some(byte) = &head.byte {
-                        decoded.push(*byte);
-                        head = &self.root;
-                    }
-                }
-
-                current <<= 1;
             }
         }
+
+        // for &byte in &data.data {
+        //     let mut current = byte;
+            
+        //     // Only read (offset) bits from the last byte
+        //     if (i == data.data.len() - 1) {
+        //         read_bits = data.offset;
+        //     }
+
+        //     for _ in 0..7 {
+
+        //         if current & 0b1000_0000 != 0 {
+        //             // Decoding 1, move head to right Node
+        //             head = head.right.as_ref().unwrap();
+
+        //             // Found a leaf
+        //             if let Some(byte) = &head.byte {
+        //                 decoded.push(*byte);
+        //                 head = &self.root;
+        //             }
+        //         }
+
+        //         else {
+        //             // Decoding 0, move head to right Node
+        //             head = head.left.as_ref().unwrap();
+
+        //             // Found a leaf
+        //             if let Some(byte) = &head.byte {
+        //                 decoded.push(*byte);
+        //                 head = &self.root;
+        //             }
+        //         }
+
+        //         current <<= 1;
+        //     }
+        // }
 
         decoded
     }

@@ -14,12 +14,17 @@ fn main() {
     let data = " aaaxaaannrbhwuuupuuuuuxhthkkkkxhccrxcccmmfffmxelllecxccx ";
     let tree = HuffmanTree::from(data.into());
 
-    let encoded: BitData = tree.encode(b"k");
+    let encoded: BitData = tree.encode(b"example");
     let decoded: Vec<u8> = tree.decode(&encoded);
 
-    println!("Source: \"{}\"\n", data);
-    println!("Tree:");
-    tree.print();
+    // println!("Source: \"{}\"\n", data);
+    // println!("Tree:");
+    // tree.print();
+
+// 10010011
+// 00100010
+// 10110000
+// 01001000
 
     println!("\nEncoded:");
     encoded.print();

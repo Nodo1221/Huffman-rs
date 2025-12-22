@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use crate::BitData;
 
 struct Node {
     left: Option<Box<Node>>,
@@ -65,7 +66,7 @@ impl Queue {
         }
     }
 
-    fn _build_heap(&mut self) {
+    fn build_heap(&mut self) {
         for i in (0..=(self.heap.len() / 2 - 1)).rev() {
             self.heapify(i);
         }
@@ -123,51 +124,52 @@ impl HuffmanTree {
             });
     }
 
-    // pub fn encode(&self, data: &[u8]) -> Vec<u8> {
+    pub fn encode(&self, data: &[u8]) -> BitData {
+        let mut encoded = BitData::new();
 
-    // }
+        data.into_iter()
+            .for_each(|raw_byte| encoded.write(&self.lookup[raw_byte]));
+
+        encoded
+    }
 
     // Decode data, return full bytes
     pub fn decode(&self, data: &[u8]) -> Vec<u8> {
         let mut decoded: Vec<u8> = Vec::new();
-        let mut current_head = &self.root;
+        let mut head = &self.root;
 
         for &byte in data {
             let mut current = byte;
 
-            // println!("new byte: {:08b}", current);
-
-
-            for i in (0..=7) {
-                // println!("{:b}", current);
-
+            for _ in 0..=7 {
                 if current & 0b1000_0000 != 0 {
-                    current_head = current_head.right.as_ref().unwrap();
+                    head = head.right.as_ref().unwrap();
                     // println!("decoding 1 ({:08b})", current);
-                    if let Some(byte) = &current_head.byte {
-                        println!("decoded: {}", *byte as char);
-                        current_head = &self.root;
+                    if let Some(byte) = &head.byte {
+                        decoded.push(*byte);
+                        // println!("decoded: {}", *byte as char);
+                        head = &self.root;
                     }
                 }
 
                 else {
-                    current_head = current_head.left.as_ref().unwrap();
+                    head = head.left.as_ref().unwrap();
                     // println!("decoding 0 ({:08b})", current);
-                    if let Some(byte) = &current_head.byte {
-                        println!("decoded: {}", *byte as char);
-                        current_head = &self.root;
+                    if let Some(byte) = &head.byte {
+                        decoded.push(*byte);
+                        // println!("decoded: {}", *byte as char);
+                        head = &self.root;
                     }
                 }
 
                 current <<= 1;
             }
-
         }
 
         decoded
     }
 
-    fn into_str(code: &Vec<bool>) -> String {
+    fn into_str(code: &[bool]) -> String {
         code.iter()
             .map(|&b| if b {'1'} else {'0'})
             .collect()

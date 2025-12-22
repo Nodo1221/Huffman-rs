@@ -11,20 +11,19 @@ macro_rules! bits {
 }
 
 fn main() {
-    let data = "aaaaaabccccccccbbdddeeeeffdfadskfbbbbbbbuuuubbbbbgdsakfds";
+    let data = "aaaaaabccccccccbbdddeeeeffdfadskfbbbbbbbuuuubbbmbbgdsakfds";
     let tree = HuffmanTree::from(data.into());
 
-    println!("Source: \"{}\"", data);
+    let encoded: BitData = tree.encode(b"fuck");
+    let decoded: Vec<u8> = tree.decode(&encoded.data);
+
+
+    println!("Source: \"{}\"\n", data);
+    println!("Tree:");
     tree.print();
 
-    let mut bitdata = BitData::new();
+    println!("\nEncoded:");
+    encoded.print();
 
-    bitdata.write(bits![0, 0, 0]);
-    bitdata.write(bits![1, 0, 1, 0]);
-    bitdata.write(bits![1, 1, 1]);
-    bitdata.write(bits![0, 0, 1, 1, 1]);
-
-    println!("decoding");
-    bitdata.print();
-    tree.decode(&bitdata.data);
+    println!("\nDecoded: {}", decoded.iter().map(|x| char::from(*x)).collect::<String>());
 }

@@ -135,12 +135,12 @@ impl HuffmanTree {
         encoded
     }
 
-    // Decode data, return full bytes
-    pub fn decode(&self, data: &[u8]) -> Vec<u8> {
+    // Decode data, return BitData (for the purpose of storing offset)
+    pub fn decode(&self, data: &BitData) -> Vec<u8> {
         let mut decoded: Vec<u8> = Vec::new();
         let mut head = &self.root;
 
-        for &byte in data {
+        for &byte in &data.data {
             let mut current = byte;
 
             for _ in 0..=7 {

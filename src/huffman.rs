@@ -89,6 +89,7 @@ impl Queue {
 pub struct HuffmanTree {
     root: Box<Node>,
     lookup: HashMap<u8, Vec<bool>>,
+    queue: Queue,
 }
 
 impl HuffmanTree {    
@@ -114,7 +115,7 @@ impl HuffmanTree {
         let root = Self::build(&mut queue);
         let lookup = Self::generate_lookup(&root);
 
-        Self { root: root, lookup }
+        Self { root, lookup, queue }
     }
 
     pub fn print(&self) {
@@ -139,11 +140,19 @@ impl HuffmanTree {
     pub fn decode(&self, data: &BitData) -> Vec<u8> {
         let mut decoded: Vec<u8> = Vec::new();
         let mut head = &self.root;
+        // TODO: this logic can be replaced to work on total bits to read, with modulo. Branching inside a for loop is unnecessary
+        let mut read_bits = 8;
 
-        for &byte in &data.data {
+        for (i, &byte) in data.data.iter().enumerate() {
             let mut current = byte;
+            
+            // Only read (offset) bits from the last byte
+            if (i == data.data.len() - 1) {
+                read_bits = data.offset;
+            }
 
-            for _ in 0..=7 {
+            for _ in 0..read_bits {
+
                 if current & 0b1000_0000 != 0 {
                     // Decoding 1, move head to right Node
                     head = head.right.as_ref().unwrap();

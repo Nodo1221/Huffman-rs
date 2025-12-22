@@ -1,6 +1,6 @@
 pub struct BitData {
     pub data: Vec<u8>,
-    offset: usize,
+    pub offset: usize,
 }
 
 impl BitData {

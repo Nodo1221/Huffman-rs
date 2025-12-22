@@ -1,3 +1,5 @@
+use std::fmt;
+
 pub struct BitData {
     pub data: Vec<u8>,
     pub offset: usize,
@@ -26,11 +28,13 @@ impl BitData {
             self.offset += 1;
         }
     }
+}
 
-    pub fn print(&self) {
+impl fmt::Display for BitData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for datum in &self.data {
-            println!("{:08b}", datum);
+            writeln!(f, "{:08b}", datum)?;
         }
-        println!("current offset: {}", self.offset);
+        writeln!(f, "current offset: {}", self.offset)
     }
 }

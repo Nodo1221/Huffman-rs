@@ -18,13 +18,9 @@ fn main() {
     let decoded: Vec<u8> = tree.decode(&encoded);
 
     println!("Source: \"{}\"\n", data);
-    println!("Tree:");
-    tree.print();
-
-    println!("\nEncoded:");
-    encoded.print();
-
-    println!("\nDecoded: {}", decoded.iter().map(|x| char::from(*x)).collect::<String>());
+    println!("Tree:\n{}", tree);
+    println!("Encoded:\n{}", encoded);
+    println!("Decoded: {}", decoded.iter().map(|x| char::from(*x)).collect::<String>());
     println!("Original: {} bytes", data.len());
     println!("Encoded: {} bytes", encoded.data.len());
     println!("Ratio: {}%", encoded.data.len() as f32 / data.len() as f32 * 100.0);

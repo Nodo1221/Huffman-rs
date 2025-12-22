@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::fmt;
+
 use crate::BitData;
 
 struct Node {
@@ -118,14 +120,6 @@ impl HuffmanTree {
         Self { root, lookup, queue }
     }
 
-    pub fn print(&self) {
-        // Non owning iter
-        self.lookup.iter()
-            .for_each(|(byte, code)| {
-                println!("'{}': {}", *byte as char, Self::into_str(code));
-            });
-    }
-
     pub fn encode(&self, data: &[u8]) -> BitData {
         let mut encoded = BitData::new();
 
@@ -228,5 +222,14 @@ impl HuffmanTree {
             Self::lookup_recurse(right_node, prefix, map);
             prefix.pop();
         }
+    }
+}
+
+impl fmt::Display for HuffmanTree {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.lookup.iter()
+            .try_for_each(|(byte, code)|
+                writeln!(f, "'{}': {}", *byte as char, Self::into_str(code))
+            )
     }
 }

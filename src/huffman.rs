@@ -91,6 +91,9 @@ pub struct HuffmanTree {
 }
 
 impl HuffmanTree {
+    // TODO: add building from a frequency table
+    // Could do via impl From
+    
     // Build a tree from string using helper Self::build() via queue 
     pub fn from(data: Vec<u8>) -> Self {
         let mut freqs = [0usize; 256];

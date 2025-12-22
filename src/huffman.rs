@@ -76,7 +76,7 @@ impl Queue {
         // Return item at [0], swap with last
         let min = self.heap.swap_remove(0);
         self.heapify(0);
-        return min;
+        min
     }
 
     fn add(&mut self, node: Box<Node>) {
@@ -86,14 +86,12 @@ impl Queue {
 }
 
 pub struct HuffmanTree {
-    _root: Box<Node>,
+    root: Box<Node>,
     lookup: HashMap<u8, Vec<bool>>,
 }
 
-impl HuffmanTree {
-    // TODO: add building from a frequency table
+impl HuffmanTree {    
     // Could do via impl From
-    
     // Build a tree from string using helper Self::build() via queue 
     pub fn from(data: Vec<u8>) -> Self {
         let mut freqs = [0usize; 256];
@@ -112,9 +110,9 @@ impl HuffmanTree {
             );
 
         let root = Self::build(&mut queue);
-        let lookup = Self::gen_lookup(&root);
+        let lookup = Self::generate_lookup(&root);
 
-        Self { _root: root, lookup }
+        Self { root: root, lookup }
     }
 
     pub fn print(&self) {
@@ -123,6 +121,50 @@ impl HuffmanTree {
             .for_each(|(byte, code)| {
                 println!("'{}': {}", *byte as char, Self::into_str(code));
             });
+    }
+
+    // pub fn encode(&self, data: &[u8]) -> Vec<u8> {
+
+    // }
+
+    // Decode data, return full bytes
+    pub fn decode(&self, data: &[u8]) -> Vec<u8> {
+        let mut decoded: Vec<u8> = Vec::new();
+        let mut current_head = &self.root;
+
+        for &byte in data {
+            let mut current = byte;
+
+            // println!("new byte: {:08b}", current);
+
+
+            for i in (0..=7) {
+                // println!("{:b}", current);
+
+                if current & 0b1000_0000 != 0 {
+                    current_head = current_head.right.as_ref().unwrap();
+                    // println!("decoding 1 ({:08b})", current);
+                    if let Some(byte) = &current_head.byte {
+                        println!("decoded: {}", *byte as char);
+                        current_head = &self.root;
+                    }
+                }
+
+                else {
+                    current_head = current_head.left.as_ref().unwrap();
+                    // println!("decoding 0 ({:08b})", current);
+                    if let Some(byte) = &current_head.byte {
+                        println!("decoded: {}", *byte as char);
+                        current_head = &self.root;
+                    }
+                }
+
+                current <<= 1;
+            }
+
+        }
+
+        decoded
     }
 
     fn into_str(code: &Vec<bool>) -> String {
@@ -153,7 +195,7 @@ impl HuffmanTree {
     }
 
     // Return a hashtable of codes
-    fn gen_lookup(root: &Box<Node>) -> HashMap<u8, Vec<bool>> {
+    fn generate_lookup(root: &Box<Node>) -> HashMap<u8, Vec<bool>> {
         let mut codes = HashMap::new();
         let mut prefix_buffer = Vec::new();
         Self::lookup_recurse(root, &mut prefix_buffer, &mut codes);        

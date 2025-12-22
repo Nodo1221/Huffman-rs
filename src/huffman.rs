@@ -141,14 +141,14 @@ impl HuffmanTree {
         let mut decoded: Vec<u8> = Vec::new();
         let mut head = &self.root;
         let stored_bits = 8 * (data.data.len() - 1) + data.offset;
-        println!("stored: {}", stored_bits);
-        println!("data len: {}", data.data.len());
 
         for i in 0..stored_bits {
-            let current_byte = data.data[i / 8] << (i % 8);
-            if current_byte & 0b1000_0000 != 0 {
+            let current_byte = data.data[i / 8];
+            let bit_index = i % 8;
+
+            // Evaluate bit at bit_index of current_byte
+            if current_byte & (1 << 7 - bit_index) != 0 {
                 // Decoding 1, move head to right Node
-                // println!("decoding 1");
                 head = head.right.as_ref().unwrap();
 
                 // Found a leaf
@@ -159,7 +159,6 @@ impl HuffmanTree {
             }
 
             else {
-                // println!("decoding 0");
                 // Decoding 0, move head to right Node
                 head = head.left.as_ref().unwrap();
 
@@ -170,43 +169,7 @@ impl HuffmanTree {
                 }
             }
         }
-
-        // for &byte in &data.data {
-        //     let mut current = byte;
-            
-        //     // Only read (offset) bits from the last byte
-        //     if (i == data.data.len() - 1) {
-        //         read_bits = data.offset;
-        //     }
-
-        //     for _ in 0..7 {
-
-        //         if current & 0b1000_0000 != 0 {
-        //             // Decoding 1, move head to right Node
-        //             head = head.right.as_ref().unwrap();
-
-        //             // Found a leaf
-        //             if let Some(byte) = &head.byte {
-        //                 decoded.push(*byte);
-        //                 head = &self.root;
-        //             }
-        //         }
-
-        //         else {
-        //             // Decoding 0, move head to right Node
-        //             head = head.left.as_ref().unwrap();
-
-        //             // Found a leaf
-        //             if let Some(byte) = &head.byte {
-        //                 decoded.push(*byte);
-        //                 head = &self.root;
-        //             }
-        //         }
-
-        //         current <<= 1;
-        //     }
-        // }
-
+        
         decoded
     }
 

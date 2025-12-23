@@ -3,6 +3,8 @@ use std::fmt;
 
 use crate::BitData;
 
+const VERSION: u16 = 1;
+
 struct Node {
     left: Option<Box<Node>>,
     right: Option<Box<Node>>,

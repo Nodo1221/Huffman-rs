@@ -195,20 +195,22 @@ impl HuffmanTree {
         writer.write_all(&VERSION.to_be_bytes())?;
 
         // Byte frequency pairs (TODO: reconsider .into_iter)
-        self.freqs.into_iter()
-            .enumerate()
-            .filter(|&(_, freq)| freq != 0)
-            .for_each(|(byte, freq) : (usize, usize)| {
-                println!("byte: {byte} freq: {freq}");
-                writer.write_all(&(byte as u8).to_be_bytes());
-                writer.write_all(&(freq as u32).to_be_bytes());
-            });
+        for (byte, &freq) in self.freqs.iter().enumerate() {
+            if freq != 0 {
+                writer.write_all(&(byte as u8).to_be_bytes())?;
+                writer.write_all(&(freq as u32).to_be_bytes())?;   
+            }
+        }
 
         // End of table
-        writer.write_all(b"###");
+        writer.write_all(b"###")?;
         
         // TODO: write content
 
+        Ok(())
+    }
+
+    pub fn read(input: &Path) -> std::io::Result<()> {
         Ok(())
     }
 

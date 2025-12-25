@@ -12,7 +12,8 @@ macro_rules! bits {
 }
 
 fn main() {
-    let data = "huffman tree example";
+    let data = "aaeee";
+    // let data = "huffman tree example";
     let tree = HuffmanTree::from(data);
 
     let encoded: BitData = tree.encode(data.as_bytes());

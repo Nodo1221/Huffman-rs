@@ -1,5 +1,9 @@
 use std::collections::HashMap;
+use std::path::Path;
 use std::fmt;
+
+use std::fs::File;
+use std::io::{Write, BufWriter};
 
 use crate::BitData;
 
@@ -93,7 +97,7 @@ impl Queue {
 pub struct HuffmanTree {
     root: Box<Node>,
     lookup: HashMap<u8, Vec<bool>>,
-    queue: Queue,
+    freqs: [usize; 256],
 }
 
 impl From<&str> for HuffmanTree {
@@ -119,7 +123,7 @@ impl HuffmanTree {
             freqs[*byte as usize] += 1;
         }
 
-        // .into_iter() creates an iterator of values (not references)
+        // .into_iter() creates an iterator of values (not references); but do we need it?
         freqs.into_iter()
             .enumerate()
             .filter(|&(_, freq)| freq != 0)
@@ -130,7 +134,7 @@ impl HuffmanTree {
         let root = Self::build(&mut queue);
         let lookup = Self::generate_lookup(&root);
 
-        Self { root, lookup, queue }
+        Self { root, lookup, freqs }
     }
 
     pub fn encode(&self, data: &[u8]) -> BitData {
@@ -177,6 +181,35 @@ impl HuffmanTree {
         }
         
         decoded
+    }
+
+    // Write to file
+    pub fn write(&self, output: &Path) -> std::io::Result<()> {
+        let file = File::create(output)?;
+        let mut writer = BufWriter::new(file);
+
+        // HUFF header
+        writer.write_all(b"HUFF")?;
+
+        // Version number
+        writer.write_all(&VERSION.to_be_bytes())?;
+
+        // Byte frequency pairs (TODO: reconsider .into_iter)
+        self.freqs.into_iter()
+            .enumerate()
+            .filter(|&(_, freq)| freq != 0)
+            .for_each(|(byte, freq) : (usize, usize)| {
+                println!("byte: {byte} freq: {freq}");
+                writer.write_all(&(byte as u8).to_be_bytes());
+                writer.write_all(&(freq as u32).to_be_bytes());
+            });
+
+        // End of table
+        writer.write_all(b"###");
+        
+        // TODO: write content
+
+        Ok(())
     }
 
     fn into_str(code: &[bool]) -> String {

@@ -3,6 +3,7 @@ mod bits;
 
 use huffman::HuffmanTree;
 use bits::BitData;
+use std::path::Path;
 
 macro_rules! bits {
     ($($b:expr),* $(,)?) => {
@@ -24,4 +25,9 @@ fn main() {
     println!("Original: {} bytes", data.len());
     println!("Encoded: {} bytes", encoded.data.len());
     println!("Ratio: {}%", encoded.data.len() as f32 / data.len() as f32 * 100.0);
+
+    match tree.write(Path::new("test.txt")) {
+        Ok(()) => println!("ok!"),
+        Err(e) => println!("error: {}", e.kind()),
+    }
 }

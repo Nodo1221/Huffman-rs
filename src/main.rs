@@ -4,7 +4,9 @@ mod bits;
 use huffman::HuffmanTree;
 use bits::BitData;
 
-use std::fs;
+use std::fs::{File, read};
+use std::io::{BufReader, Read, Seek, Result};
+
 use std::path::Path;
 use std::error::Error;
 
@@ -14,9 +16,9 @@ macro_rules! bits {
     };
 }
 
-fn encode() -> Result<(), Box<dyn Error>> {
+fn encode() -> Result<()> {
     // Read bytes from file
-    let data = fs::read("test.txt")?;
+    let data = read("test.txt")?;
 
     // Create a tree based on data
     let tree = HuffmanTree::from_vec(&data);
@@ -32,13 +34,17 @@ fn encode() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn decode() -> Result<(), Box<dyn Error>> {
-    let tree = HuffmanTree::build_from_file(Path::new("test.txt.huff"));
+fn decode() -> Result<()> {
+    let file = File::open("test.txt.huff")?;
+    let mut reader = BufReader::new(file);
+    let tree = HuffmanTree::parse_headers(&mut reader)?;
+
+    tree.decode_file(&mut reader);
 
     Ok(())
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    encode()?;
+fn main() -> Result<()> {
+    decode()?;
     Ok(())
 }

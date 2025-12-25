@@ -3,8 +3,8 @@ use std::path::Path;
 use std::fmt;
 
 use std::fs::{read, File};
+use std::io::{BufReader, Read, Seek, Result};
 use std::io::{Write, BufWriter};
-use std::convert::TryFrom;
 
 use crate::BitData;
 
@@ -143,57 +143,64 @@ impl HuffmanTree {
     }
 
     // Assuming a correct tree, decode file
-    pub fn decode_file(&self, path: &Path) {
+    pub fn decode_file(&self, reader: &mut BufReader<File>) {
 
     }
 
-    // Decode a compressed file
-    pub fn build_from_file(path: &Path) -> Self {
-        let raw_data: Vec<u8> = read(path).unwrap();
-            let mut data = BitData::new();
-
-            if raw_data.get(..4) != Some(b"HUFF") {
-                panic!("invalid header");
-            }
-
-            data.offset = raw_data[5] as usize;
-
-            // let mut hashes = 0;
-
-            let mut i = 6;
-            let mut queue = Queue::new();
-
-
-            // Only parse headers
-            while i < raw_data.len() {
-                if raw_data[i] == b'#' {
-                    if let Some(slice) = raw_data.get(i..i+6) {
-                        println!("break @ {}", i);
-                        break;
-                    } else {
-                        println!("Not enough elements, ignoring");
-                    }
-
-                    // generate a Queue here, then build from queue
-                    queue.heap.push(Box::new(Node::new(raw_data[i], raw_data[i+1].into())));
-                }
+    // Decode file headers, build tree
+    pub fn parse_headers(reader: &mut BufReader<File>) -> Result<Self> {
+        let mut magic = [0u8; 4];
+        reader.read_exact(&mut magic)?;
+        
+        if &magic != b"HUFF" {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "File doesn't start with HUFF"
+            ));
+        }
+        
+        let delimiter = b"######";
+        let mut buffer = Vec::new();
+        let mut temp = [0u8; 8192];
+        
+        // Read until we find ######
+        loop {
+            let n = reader.read(&mut temp)?;
+            if n == 0 { break; }
+            
+            let search_start = buffer.len().saturating_sub(delimiter.len() - 1);
+            buffer.extend_from_slice(&temp[..n]);
+            
+            if let Some(pos) = buffer[search_start..].windows(delimiter.len())
+                .position(|w| w == delimiter)
+            {
+                let actual_pos = search_start + pos;
+                buffer.truncate(actual_pos);
                 
-                i += 2;
+                // Seek reader to right after delimiter
+                let overshoot = buffer.len() + delimiter.len() - (search_start + pos + delimiter.len());
+                reader.seek_relative(-(overshoot as i64))?;
+                
+                break;
             }
+        }
+        
+        // Parse pairs (u8, u32)
+        let mut queue = Queue::new();
 
-            
-            i += 6;
-            
-            queue.build_heap();
+        for chunk in buffer.chunks_exact(5) {
+            let byte = chunk[0];
+            let freq = u32::from_be_bytes([chunk[1], chunk[2], chunk[3], chunk[4]]);
+            queue.add(Box::new(Node::new(byte, freq as usize)));
+        }
 
-            // TODO: actualy store freq probably (or maybe not)
-            let root = Self::build(&mut queue);
-            let lookup = Self::generate_lookup(&root);
-            Self {
-                root: root,
-                freqs: [0; 256],
-                lookup: lookup,
-            }
+        let root = Self::build(&mut queue);
+        let lookup = Self::generate_lookup(&root);
+        let freqs = [0; 256];
+
+        Ok(Self{
+            root, lookup, freqs
+        })
     }
     
     // Encode &[u8] data
@@ -272,8 +279,6 @@ impl HuffmanTree {
         // End of table
         writer.write_all(b"######")?;
         
-        println!("written encoded data:\n{}", encoded_data);
-
         // Write data
         writer.write_all(&encoded_data.data)?;
 

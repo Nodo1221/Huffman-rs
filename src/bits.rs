@@ -23,7 +23,6 @@ impl BitData {
                 self.buffer = 0;
             }
 
-            // TODO: don't write to the heap immediatelly, keep a local buffer with the curret byte
             self.buffer |= (datum as u8) << (7 - self.offset);
             self.offset += 1;
         }

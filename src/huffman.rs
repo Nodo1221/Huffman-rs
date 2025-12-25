@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::fmt;
 
-use std::fs::File;
+use std::fs::{read, File};
 use std::io::{Write, BufWriter};
+use std::convert::TryFrom;
 
 use crate::BitData;
 
@@ -101,20 +102,55 @@ pub struct HuffmanTree {
     source_data: Vec<u8>,
 }
 
+// Build from &str
 impl From<&str> for HuffmanTree {
     fn from(data: &str) -> Self {
         Self::from_vec(data.into())
     }
 }
 
-// impl From<&[u8]> for HuffmanTree {
-//     fn from(data: &[u8]) -> Self {
-//         Self::from_vec(data)
+// impl From<&Path> for HuffmanTree {
+//     fn from(path: &Path) -> Self {
+//         let raw_data: Vec<u8> = read(path).unwrap();
+//         let mut data = BitData::new();
+
+//         if raw_data.get(..4) != Some(b"HUFF") {
+//             panic!("invalid header");
+//         }
+
+//         data.offset = raw_data[5] as usize;
+
+//         // let mut hashes = 0;
+
+//         let mut i = 6;
+
+//         while i < raw_data.len() {
+//             if raw_data[i] == b'#' {
+//                 if let Some(slice) = raw_data.get(i..i+6) {
+//                     println!("break @ {}", i);
+//                     break;
+//                 } else {
+//                     println!("Not enough elements, ignoring");
+//                 }
+//             }
+
+//             i += 1;
+//         }
+
+//         i += 6;
+
+//         data.write(&raw_data[i..]);
+
+//         println!("rest of data: {:08b}", &raw_data[i..][0]);
+
+//         // definetely wrong
+//         Self::from_vec(raw_data)
 //     }
 // }
 
+
 impl HuffmanTree {    
-    // Builds a tree from &[u8] using helper Self::build() via queue 
+    // Build from &[u8] using helper Self::build() via queue 
     pub fn from_vec(data: Vec<u8>) -> Self {
         let mut freqs = [0usize; 256];
         let mut queue = Queue::new();
@@ -138,6 +174,7 @@ impl HuffmanTree {
         Self { root, lookup, freqs, source_data: data }
     }
 
+    // Encode self.source_data
     pub fn encode(&self) -> BitData {
         let mut encoded = BitData::new();
 
@@ -186,13 +223,18 @@ impl HuffmanTree {
         decoded
     }
 
-    // Write to file
+    // Write encoedd self.source_data to file
     pub fn write(&self, output: &Path) -> std::io::Result<()> {
+        let encoded = self.encode();
+
         let file = File::create(output)?;
         let mut writer = BufWriter::new(file);
 
         // HUFF header
         writer.write_all(b"HUFF")?;
+
+        // Offset
+        writer.write_all(&(encoded.offset as u8).to_be_bytes())?;
 
         // Version number
         writer.write_all(&VERSION.to_be_bytes())?;
@@ -206,10 +248,12 @@ impl HuffmanTree {
         }
 
         // End of table
-        writer.write_all(b"###")?;
+        writer.write_all(b"######")?;
         
+        println!("data to encode: {}", encoded);
+
         // Write data
-        writer.write_all(&self.source_data)?;
+        writer.write_all(&encoded.data)?;
 
         Ok(())
     }

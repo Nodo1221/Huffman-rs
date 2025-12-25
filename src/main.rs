@@ -12,25 +12,16 @@ macro_rules! bits {
 }
 
 fn main() {
-    let data = "aaeee";
-    // let data = "huffman tree example";
-    let tree = HuffmanTree::from(&data);
+    // Build a tree based on a regular uncompressed file
+    // let tree = HuffmanTree::from(Path::new("test.txt"));
 
+    // Compress data
     // let encoded: BitData = tree.encode();
-    // let decoded: Vec<u8> = tree.decode(&encoded);
 
-    // println!("Source: \"{}\"\n", data);
-    // println!("Tree:\n{}", tree);
-    // println!("Encoded:\n{}", encoded);
-    // println!("Decoded: {}", String::from_utf8(decoded).unwrap());
-    // println!("Original: {} bytes", data.len());
-    // println!("Encoded: {} bytes", encoded.data.len());
-    // println!("Ratio: {}%", encoded.data.len() as f32 / data.len() as f32 * 100.0);
+    // Write compressed data to file
+    // tree.write(Path::new("test.txt.compressed"), &encoded).unwrap();
 
-    // match tree.write(Path::new("test.txt.huff")) {
-    //     Ok(()) => println!("ok!"),
-    //     Err(e) => println!("error: {}", e.kind()),
-    // }
 
-    // let tree = HuffmanTree::from(Path::new("test.txt.huff"));
+    let tree = HuffmanTree::decode_file(Path::new("test.txt.compressed"));
+    println!("{:?}", tree.source_data);
 }

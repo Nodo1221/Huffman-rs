@@ -96,10 +96,10 @@ impl Queue {
 }
 
 pub struct HuffmanTree {
-    root: Box<Node>, // Necessary for decoding
-    freqs: [usize; 256], // Necessary for encoding
-    lookup: HashMap<u8, Vec<bool>>, // Probably unnecessary
-    source_data: Vec<u8>, // Could be a &[u8]?
+    root: Box<Node>, // For decoding
+    freqs: [usize; 256], // For encoding header
+    lookup: HashMap<u8, Vec<bool>>, // For encoding data
+    pub source_data: Vec<u8>, // Could be a &[u8]? Probly unnecesary
 }
 
 // Build from &str
@@ -109,48 +109,16 @@ impl From<&str> for HuffmanTree {
     }
 }
 
-// impl From<&Path> for HuffmanTree {
-//     fn from(path: &Path) -> Self {
-//         let raw_data: Vec<u8> = read(path).unwrap();
-//         let mut data = BitData::new();
+// Build from path
+impl From<&Path> for HuffmanTree {
+    fn from(path: &Path) -> Self {
+        let data: Vec<u8> = read(path).unwrap();
+        Self::from_vec(data)
+    }
+}
 
-//         if raw_data.get(..4) != Some(b"HUFF") {
-//             panic!("invalid header");
-//         }
-
-//         data.offset = raw_data[5] as usize;
-
-//         // let mut hashes = 0;
-
-//         let mut i = 6;
-
-//         while i < raw_data.len() {
-//             if raw_data[i] == b'#' {
-//                 if let Some(slice) = raw_data.get(i..i+6) {
-//                     println!("break @ {}", i);
-//                     break;
-//                 } else {
-//                     println!("Not enough elements, ignoring");
-//                 }
-//             }
-
-//             i += 1;
-//         }
-
-//         i += 6;
-
-//         data.write(&raw_data[i..]);
-
-//         println!("rest of data: {:08b}", &raw_data[i..][0]);
-
-//         // definetely wrong
-//         Self::from_vec(raw_data)
-//     }
-// }
-
-
-impl HuffmanTree {    
-    // Build from &[u8] using helper Self::build() via queue 
+impl HuffmanTree {
+    // Build from &[u8] by parsing a queue with Self::build()
     pub fn from_vec(data: Vec<u8>) -> Self {
         let mut freqs = [0usize; 256];
         let mut queue = Queue::new();
@@ -174,7 +142,60 @@ impl HuffmanTree {
         Self { root, lookup, freqs, source_data: data }
     }
 
-    // Encode self.source_data
+    // Decode a compressed file
+    pub fn decode_file(path: &Path) -> Self {
+        let raw_data: Vec<u8> = read(path).unwrap();
+            let mut data = BitData::new();
+
+            if raw_data.get(..4) != Some(b"HUFF") {
+                panic!("invalid header");
+            }
+
+            data.offset = raw_data[5] as usize;
+
+            // let mut hashes = 0;
+
+            let mut i = 6;
+            let mut queue = Queue::new();
+
+            while i < raw_data.len() {
+                if raw_data[i] == b'#' {
+                    if let Some(slice) = raw_data.get(i..i+6) {
+                        println!("break @ {}", i);
+                        break;
+                    } else {
+                        println!("Not enough elements, ignoring");
+                    }
+
+                    // generate a Queue here, then build from queue
+                    queue.heap.push(Box::new(Node::new(raw_data[i], raw_data[i+1].into())));
+                }
+                
+                i += 2;
+            }
+
+            
+            i += 6;
+            
+            queue.build_heap();
+            data.data = (&raw_data[i..]).to_vec();
+
+            // println!("rest of data: {:08b}", &raw_data[i..][0]);
+
+            // definetely wrong
+            let root = Self::build(&mut queue);
+            let lookup = Self::generate_lookup(&root);
+            Self {
+                root: root,
+                freqs: [0; 256],
+                lookup: lookup,
+                source_data: Vec::new(),
+
+            }
+    }
+    
+    // Encode from source_data
+    // Return BitData (containing offset)
     pub fn encode(&self) -> BitData {
         let mut encoded = BitData::new();
 
@@ -186,7 +207,7 @@ impl HuffmanTree {
         encoded
     }
 
-    // Decode data, return BitData (for the purpose of storing offset)
+    // Decode data, return Vec<u8> with decoded bits
     pub fn decode(&self, data: &BitData) -> Vec<u8> {
         let mut decoded: Vec<u8> = Vec::new();
         let mut head = &self.root;
@@ -223,10 +244,8 @@ impl HuffmanTree {
         decoded
     }
 
-    // Write encoedd self.source_data to file
-    pub fn write(&self, output: &Path) -> std::io::Result<()> {
-        let encoded = self.encode();
-
+    // Write encoded &BitData (for offset) to a file
+    pub fn write(&self, output: &Path, encoded_data: &BitData) -> std::io::Result<()> {
         let file = File::create(output)?;
         let mut writer = BufWriter::new(file);
 
@@ -234,7 +253,7 @@ impl HuffmanTree {
         writer.write_all(b"HUFF")?;
 
         // Offset
-        writer.write_all(&(encoded.offset as u8).to_be_bytes())?;
+        writer.write_all(&(encoded_data.offset as u8).to_be_bytes())?;
 
         // Version number
         writer.write_all(&VERSION.to_be_bytes())?;
@@ -250,10 +269,10 @@ impl HuffmanTree {
         // End of table
         writer.write_all(b"######")?;
         
-        println!("data to encode: {}", encoded);
+        println!("encoded data:\n{}", encoded_data);
 
         // Write data
-        writer.write_all(&encoded.data)?;
+        writer.write_all(&encoded_data.data)?;
 
         Ok(())
     }

@@ -99,31 +99,31 @@ pub struct HuffmanTree {
     root: Box<Node>, // For decoding
     freqs: [usize; 256], // For encoding header
     lookup: HashMap<u8, Vec<bool>>, // For encoding data
-    pub source_data: Vec<u8>, // Could be a &[u8]? Probly unnecesary
 }
 
-// Build from &str
+// Parse &str, create a tree
 impl From<&str> for HuffmanTree {
     fn from(data: &str) -> Self {
-        Self::from_vec(data.into())
+        Self::from_vec(data.as_bytes())
     }
 }
 
-// Build from path
+// Parse a file, create a tree
 impl From<&Path> for HuffmanTree {
     fn from(path: &Path) -> Self {
         let data: Vec<u8> = read(path).unwrap();
-        Self::from_vec(data)
+        Self::from_vec(&data)
     }
 }
 
 impl HuffmanTree {
-    // Build from &[u8] by parsing a queue with Self::build()
-    pub fn from_vec(data: Vec<u8>) -> Self {
+    // Build a tree from &[u8]
+    // (Parsing a queue with Self::build)
+    pub fn from_vec(data: &[u8]) -> Self {
         let mut freqs = [0usize; 256];
         let mut queue = Queue::new();
 
-        for &byte in &data {
+        for &byte in data {
             freqs[byte as usize] += 1;
         }
 
@@ -139,7 +139,7 @@ impl HuffmanTree {
         let root = Self::build(&mut queue);
         let lookup = Self::generate_lookup(&root);
 
-        Self { root, lookup, freqs, source_data: data }
+        Self { root, lookup, freqs }
     }
 
     // Decode a compressed file
@@ -189,25 +189,25 @@ impl HuffmanTree {
                 root: root,
                 freqs: [0; 256],
                 lookup: lookup,
-                source_data: Vec::new(),
-
             }
     }
     
-    // Encode from source_data
+    // Encode &[u8] data
     // Return BitData (containing offset)
-    pub fn encode(&self) -> BitData {
+    pub fn encode(&self, data: &[u8]) -> BitData {
         let mut encoded = BitData::new();
 
-        for raw_byte in &self.source_data {
+        for raw_byte in data {
             let code = self.lookup.get(raw_byte).expect("Broken tree! Missing key in lookup");
             encoded.write(code);
         }
 
+        encoded.flush();
+
         encoded
     }
 
-    // Decode data, return Vec<u8> with decoded bits
+    // Decode &BitData, return Vec<u8> with decoded bits
     pub fn decode(&self, data: &BitData) -> Vec<u8> {
         let mut decoded: Vec<u8> = Vec::new();
         let mut head = &self.root;
@@ -244,7 +244,7 @@ impl HuffmanTree {
         decoded
     }
 
-    // Write encoded &BitData (for offset) to a file
+    // Write encoded &BitData (for offset) to a file)
     pub fn write(&self, output: &Path, encoded_data: &BitData) -> std::io::Result<()> {
         let file = File::create(output)?;
         let mut writer = BufWriter::new(file);
@@ -269,15 +269,11 @@ impl HuffmanTree {
         // End of table
         writer.write_all(b"######")?;
         
-        println!("encoded data:\n{}", encoded_data);
+        println!("written encoded data:\n{}", encoded_data);
 
         // Write data
         writer.write_all(&encoded_data.data)?;
 
-        Ok(())
-    }
-
-    pub fn read(input: &Path) -> std::io::Result<()> {
         Ok(())
     }
 

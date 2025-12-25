@@ -3,7 +3,10 @@ mod bits;
 
 use huffman::HuffmanTree;
 use bits::BitData;
+
+use std::fs;
 use std::path::Path;
+use std::error::Error;
 
 macro_rules! bits {
     ($($b:expr),* $(,)?) => {
@@ -11,17 +14,21 @@ macro_rules! bits {
     };
 }
 
-fn main() {
-    // Build a tree based on a regular uncompressed file
-    // let tree = HuffmanTree::from(Path::new("test.txt"));
+fn main() -> Result<(), Box<dyn Error>> {
+    // Read bytes from file
+    let data = fs::read("test.txt")?;
 
-    // Compress data
-    // let encoded: BitData = tree.encode();
+    // Create a tree based on data
+    let tree = HuffmanTree::from_vec(&data);
 
-    // Write compressed data to file
-    // tree.write(Path::new("test.txt.compressed"), &encoded).unwrap();
+    // Encode data via tree
+    let encoded: BitData = tree.encode(&data);
 
+    println!("Encoded data:");
+    println!("{encoded}");
 
-    let tree = HuffmanTree::decode_file(Path::new("test.txt.compressed"));
-    println!("{:?}", tree.source_data);
+    // Write encoded data to .huff file
+    tree.write(Path::new("test.txt.huff"), &encoded).unwrap();
+
+    Ok(())
 }

@@ -98,32 +98,33 @@ pub struct HuffmanTree {
     root: Box<Node>,
     lookup: HashMap<u8, Vec<bool>>,
     freqs: [usize; 256],
+    source_data: Vec<u8>,
 }
 
 impl From<&str> for HuffmanTree {
     fn from(data: &str) -> Self {
-        Self::from_bytes(data.as_bytes())
+        Self::from_vec(data.into())
     }
 }
 
-impl From<&[u8]> for HuffmanTree {
-    fn from(data: &[u8]) -> Self {
-        Self::from_bytes(data)
-    }
-}
+// impl From<&[u8]> for HuffmanTree {
+//     fn from(data: &[u8]) -> Self {
+//         Self::from_vec(data)
+//     }
+// }
 
 impl HuffmanTree {    
-    // Could do via impl From
     // Builds a tree from &[u8] using helper Self::build() via queue 
-    pub fn from_bytes(data: &[u8]) -> Self {
+    pub fn from_vec(data: Vec<u8>) -> Self {
         let mut freqs = [0usize; 256];
         let mut queue = Queue::new();
 
-        for byte in data {
-            freqs[*byte as usize] += 1;
+        for &byte in &data {
+            freqs[byte as usize] += 1;
         }
 
-        // .into_iter() creates an iterator of values (not references); but do we need it?
+        // .into_iter() creates an iterator of values (not references)
+        // They are moved, not referenced, but freqs is of Copy, so they're copied anyway
         freqs.into_iter()
             .enumerate()
             .filter(|&(_, freq)| freq != 0)
@@ -134,7 +135,7 @@ impl HuffmanTree {
         let root = Self::build(&mut queue);
         let lookup = Self::generate_lookup(&root);
 
-        Self { root, lookup, freqs }
+        Self { root, lookup, freqs, source_data: data }
     }
 
     pub fn encode(&self, data: &[u8]) -> BitData {
@@ -205,7 +206,8 @@ impl HuffmanTree {
         // End of table
         writer.write_all(b"###")?;
         
-        // TODO: write content
+        // Write data
+        writer.write_all(&self.source_data)?;
 
         Ok(())
     }

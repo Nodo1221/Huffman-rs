@@ -16,7 +16,7 @@ fn main() {
     // let data = "huffman tree example";
     let tree = HuffmanTree::from(data);
 
-    let encoded: BitData = tree.encode(data.as_bytes());
+    let encoded: BitData = tree.encode();
     let decoded: Vec<u8> = tree.decode(&encoded);
 
     println!("Source: \"{}\"\n", data);

@@ -138,11 +138,13 @@ impl HuffmanTree {
         Self { root, lookup, freqs, source_data: data }
     }
 
-    pub fn encode(&self, data: &[u8]) -> BitData {
+    pub fn encode(&self) -> BitData {
         let mut encoded = BitData::new();
 
-        data.into_iter()
-            .for_each(|raw_byte| encoded.write(&self.lookup.get(raw_byte).expect("Broken tree! Missing key in lookup")));
+        for raw_byte in &self.source_data {
+            let code = self.lookup.get(raw_byte).expect("Broken tree! Missing key in lookup");
+            encoded.write(code);
+        }
 
         encoded
     }
@@ -195,7 +197,7 @@ impl HuffmanTree {
         // Version number
         writer.write_all(&VERSION.to_be_bytes())?;
 
-        // Byte frequency pairs (TODO: reconsider .into_iter)
+        // Byte frequency pairs
         for (byte, &freq) in self.freqs.iter().enumerate() {
             if freq != 0 {
                 writer.write_all(&(byte as u8).to_be_bytes())?;

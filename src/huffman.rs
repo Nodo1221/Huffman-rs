@@ -142,8 +142,13 @@ impl HuffmanTree {
         Self { root, lookup, freqs }
     }
 
+    // Assuming a correct tree, decode file
+    pub fn decode_file(&self, path: &Path) {
+
+    }
+
     // Decode a compressed file
-    pub fn decode_file(path: &Path) -> Self {
+    pub fn build_from_file(path: &Path) -> Self {
         let raw_data: Vec<u8> = read(path).unwrap();
             let mut data = BitData::new();
 
@@ -158,6 +163,8 @@ impl HuffmanTree {
             let mut i = 6;
             let mut queue = Queue::new();
 
+
+            // Only parse headers
             while i < raw_data.len() {
                 if raw_data[i] == b'#' {
                     if let Some(slice) = raw_data.get(i..i+6) {
@@ -178,11 +185,8 @@ impl HuffmanTree {
             i += 6;
             
             queue.build_heap();
-            data.data = (&raw_data[i..]).to_vec();
 
-            // println!("rest of data: {:08b}", &raw_data[i..][0]);
-
-            // definetely wrong
+            // TODO: actualy store freq probably (or maybe not)
             let root = Self::build(&mut queue);
             let lookup = Self::generate_lookup(&root);
             Self {
@@ -203,7 +207,6 @@ impl HuffmanTree {
         }
 
         encoded.flush();
-
         encoded
     }
 

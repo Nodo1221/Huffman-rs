@@ -14,7 +14,7 @@ macro_rules! bits {
     };
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn encode() -> Result<(), Box<dyn Error>> {
     // Read bytes from file
     let data = fs::read("test.txt")?;
 
@@ -29,6 +29,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Write encoded data to .huff file
     tree.write(Path::new("test.txt.huff"), &encoded).unwrap();
+    Ok(())
+}
 
+fn decode() -> Result<(), Box<dyn Error>> {
+    let tree = HuffmanTree::build_from_file(Path::new("test.txt.huff"));
+
+    Ok(())
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    encode()?;
     Ok(())
 }

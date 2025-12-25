@@ -96,10 +96,10 @@ impl Queue {
 }
 
 pub struct HuffmanTree {
-    root: Box<Node>,
-    lookup: HashMap<u8, Vec<bool>>,
-    freqs: [usize; 256],
-    source_data: Vec<u8>,
+    root: Box<Node>, // Necessary for decoding
+    freqs: [usize; 256], // Necessary for encoding
+    lookup: HashMap<u8, Vec<bool>>, // Probably unnecessary
+    source_data: Vec<u8>, // Could be a &[u8]?
 }
 
 // Build from &str

@@ -12,7 +12,7 @@ macro_rules! bits {
 }
 
 fn main() {
-    let data = b"abbbeeeddcdfdjfahfdkjhfjdahfkjhjkhekjhfkad";
+    let data = b"aaacxxccxbbxee";
 
     // Encoding
     let encoder = HuffEncoder::from_vec(data);
@@ -20,12 +20,10 @@ fn main() {
     encoder.write_to_file(Path::new("test.txt.huff"), &encoded).unwrap();
     
     // Deocding
-    let decoder = HuffDecoder::from_file_headers(Path::new("test.txt.huff")).unwrap();
+    let mut decoder = HuffDecoder::from_file_headers(Path::new("test.txt.huff")).unwrap();
     let decoded: Vec<u8> = decoder.decode_file(Path::new("test.txt.huff")).unwrap();
 
-    println!("encoded:");
-    println!("{}", encoded);
-    println!("{}", String::from_utf8_lossy(&decoded));
-
+    println!("source: {}\n", String::from_utf8_lossy(data));
+    println!("encoded:\n{}", encoded);
     println!("decoded: {}", String::from_utf8_lossy(&decoded));
 }

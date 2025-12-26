@@ -1,15 +1,16 @@
 use std::collections::HashMap;
-use std::path::Path;
 // use std::fmt;
 
-use std::fs::{read, File};
-use std::io::{BufReader, Read, Seek, Result};
+use std::path::Path;
+use std::fs::File;
+use std::io::{BufReader, Read, Seek};
 use std::io::{self, Write, BufWriter, SeekFrom};
 
 use crate::BitData;
 
 const VERSION: u8 = 1;
 
+#[allow(dead_code)]
 struct Node {
     left: Option<Box<Node>>,
     right: Option<Box<Node>>,
@@ -17,6 +18,7 @@ struct Node {
     freq: usize,
 }
 
+#[allow(dead_code)]
 impl Node {
     fn new(byte: u8, freq: usize) -> Self {
         Self {
@@ -226,6 +228,7 @@ impl HuffEncoder {
 pub struct HuffDecoder {
     root: Box<Node>,
     offset: u8,
+    reader: BufReader<File>,
 }
 
 impl HuffDecoder {
@@ -273,30 +276,14 @@ impl HuffDecoder {
         Ok(Self{
             root,
             offset,
+            reader
         })
     }
 
-    pub fn decode_file(&self, path: &Path) -> io::Result<Vec<u8>> {
-        let mut reader = BufReader::new(File::open(path)?);
-
-        // 1. Calculate Header Size to Skip
-        // Move to where the 'count' (u16) is stored: index 6
-        reader.seek(SeekFrom::Start(6))?;
-
-        let mut count_buf = [0u8; 2];
-        reader.read_exact(&mut count_buf)?;
-        let count = u16::from_be_bytes(count_buf);
-
-        // Header = HUFF (4) + Offset (1) + Ver (1) + Count (2) + (5 bytes * count)
-        //        = 8 + (5 * count)
-        let header_len = 8 + (count as u64 * 5);
-
-        // 2. Skip to Data
-        reader.seek(SeekFrom::Start(header_len))?;
-
+    pub fn decode_file(&mut self, path: &Path) -> io::Result<Vec<u8>> {
         // 3. Read Raw Encoded Data
         let mut buffer = Vec::new();
-        reader.read_to_end(&mut buffer)?;
+        self.reader.read_to_end(&mut buffer)?;
 
         // 4. Delegate to your existing function
         // Passing the raw bytes and the padding offset stored in struct
@@ -304,7 +291,7 @@ impl HuffDecoder {
     }
 
     // Debug use
-    pub fn decode_data_from_root(root: &Box<Node>, data: &[u8], offset: usize) -> Vec<u8> {
+    fn decode_data_from_root(root: &Box<Node>, data: &[u8], offset: usize) -> Vec<u8> {
         let mut decoded: Vec<u8> = Vec::new();
         let mut head = root;
         let stored_bits = 8 * (data.len() - 1) + offset;
@@ -338,5 +325,5 @@ impl HuffDecoder {
         }
         
         decoded
-    } 
+    }
 }

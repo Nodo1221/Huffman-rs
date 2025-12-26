@@ -1,14 +1,9 @@
 mod huffman;
 mod bits;
 
-use huffman::HuffmanTree;
+use huffman::{HuffEncoder, HuffDecoder};
 use bits::BitData;
-
-use std::fs::{File, read};
-use std::io::{BufReader, Read, Seek, Result};
-
 use std::path::Path;
-use std::error::Error;
 
 macro_rules! bits {
     ($($b:expr),* $(,)?) => {
@@ -16,35 +11,21 @@ macro_rules! bits {
     };
 }
 
-fn encode() -> Result<()> {
-    // Read bytes from file
-    let data = read("test.txt")?;
+fn main() {
+    let data = b"abbbeeeddcdfdjfahfdkjhfjdahfkjhjkhekjhfkad";
 
-    // Create a tree based on data
-    let tree = HuffmanTree::from_vec(&data);
+    // Encoding
+    let encoder = HuffEncoder::from_vec(data);
+    let encoded: BitData = encoder.encode(data);
+    encoder.write_to_file(Path::new("test.txt.huff"), &encoded).unwrap();
+    
+    // Deocding
+    let decoder = HuffDecoder::from_file_headers(Path::new("test.txt.huff")).unwrap();
+    let decoded: Vec<u8> = decoder.decode_file(Path::new("test.txt.huff")).unwrap();
 
-    // Encode data via tree
-    let encoded: BitData = tree.encode(&data);
+    println!("encoded:");
+    println!("{}", encoded);
+    println!("{}", String::from_utf8_lossy(&decoded));
 
-    println!("Encoded data:");
-    println!("{encoded}");
-
-    // Write encoded data to .huff file
-    tree.write(Path::new("test.txt.huff"), &encoded).unwrap();
-    Ok(())
-}
-
-fn decode() -> Result<()> {
-    let file = File::open("test.txt.huff")?;
-    let mut reader = BufReader::new(file);
-    let tree = HuffmanTree::parse_headers(&mut reader)?;
-
-    tree.decode_file(&mut reader);
-
-    Ok(())
-}
-
-fn main() -> Result<()> {
-    decode()?;
-    Ok(())
+    println!("decoded: {}", String::from_utf8_lossy(&decoded));
 }

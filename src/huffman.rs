@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::fmt;
+// use std::fmt;
 
 use std::fs::{read, File};
 use std::io::{BufReader, Read, Seek, Result};
-use std::io::{Write, BufWriter};
+use std::io::{self, Write, BufWriter, SeekFrom};
 
 use crate::BitData;
 
-const VERSION: u16 = 1;
+const VERSION: u8 = 1;
 
 struct Node {
     left: Option<Box<Node>>,
@@ -95,30 +95,64 @@ impl Queue {
     }
 }
 
-pub struct HuffmanTree {
-    root: Box<Node>, // For decoding
-    freqs: [usize; 256], // For encoding header
-    lookup: HashMap<u8, Vec<bool>>, // For encoding data
+// Create a tree (return Box<Node>) from a queue
+fn from_queue(mut queue: Queue) -> Box<Node> {
+    while queue.heap.len() > 1 {
+        let left = queue.pop_min();
+        let right = queue.pop_min();
+        let freq = left.freq + right.freq;
+
+        let combined = Box::new(Node {
+            left: Some(left),
+            right: Some(right),
+            byte: None,
+            freq,
+        });
+
+        queue.add(combined);
+    }
+
+    queue.pop_min()
 }
 
-// Parse &str, create a tree
-impl From<&str> for HuffmanTree {
-    fn from(data: &str) -> Self {
-        Self::from_vec(data.as_bytes())
+fn generate_lookup(root: &Box<Node>) -> HashMap<u8, Vec<bool>> {
+    let mut codes = HashMap::new();
+    let mut prefix_buffer = Vec::new();
+    lookup_recurse(root, &mut prefix_buffer, &mut codes);        
+    codes
+}
+
+fn lookup_recurse(node: &Node, prefix: &mut Vec<bool>, map: &mut HashMap<u8, Vec<bool>>) {
+    // Node is a leaf
+    if let Some(b) = node.byte {
+        map.insert(b, prefix.clone());
+        return;
+    }
+
+    // If left exists, recurse
+    if let Some(left_node) = &node.left {
+        // Run lookup_recurse with a temporarily modified vec (then backtrack -- drop the appendix)
+        prefix.push(false);
+        lookup_recurse(left_node, prefix, map);
+        prefix.pop();
+    }
+
+    // If right exists, recurse
+    if let Some(right_node) = &node.right {
+        prefix.push(true);
+        lookup_recurse(right_node, prefix, map);
+        prefix.pop();
     }
 }
 
-// Parse a file, create a tree
-impl From<&Path> for HuffmanTree {
-    fn from(path: &Path) -> Self {
-        let data: Vec<u8> = read(path).unwrap();
-        Self::from_vec(&data)
-    }
+pub struct HuffEncoder {
+    lookup: HashMap<u8, Vec<bool>>,
+    freqs: [usize; 256],
+    unique_bytes: usize,
+    root: Box<Node>,
 }
 
-impl HuffmanTree {
-    // Build a tree from &[u8]
-    // (Parsing a queue with Self::build)
+impl HuffEncoder {
     pub fn from_vec(data: &[u8]) -> Self {
         let mut freqs = [0usize; 256];
         let mut queue = Queue::new();
@@ -129,82 +163,22 @@ impl HuffmanTree {
 
         // .into_iter() creates an iterator of values (not references)
         // They are moved, not referenced, but freqs is of Copy, so they're copied anyway
+        let mut unique_bytes = 0;
         freqs.into_iter()
             .enumerate()
             .filter(|&(_, freq)| freq != 0)
-            .for_each(|(byte, freq)|
+            .for_each(|(byte, freq)| {
+                unique_bytes += 1;
                 queue.add(Box::new(Node::new(byte as u8, freq)))
+            }
             );
 
-        let root = Self::build(&mut queue);
-        let lookup = Self::generate_lookup(&root);
+        let root = from_queue(queue);
+        let lookup = generate_lookup(&root);
 
-        Self { root, lookup, freqs }
+        Self { lookup, freqs, root, unique_bytes }
     }
 
-    // Assuming a correct tree, decode file
-    pub fn decode_file(&self, reader: &mut BufReader<File>) {
-
-    }
-
-    // Decode file headers, build tree
-    pub fn parse_headers(reader: &mut BufReader<File>) -> Result<Self> {
-        let mut magic = [0u8; 4];
-        reader.read_exact(&mut magic)?;
-        
-        if &magic != b"HUFF" {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "File doesn't start with HUFF"
-            ));
-        }
-        
-        let delimiter = b"######";
-        let mut buffer = Vec::new();
-        let mut temp = [0u8; 8192];
-        
-        // Read until we find ######
-        loop {
-            let n = reader.read(&mut temp)?;
-            if n == 0 { break; }
-            
-            let search_start = buffer.len().saturating_sub(delimiter.len() - 1);
-            buffer.extend_from_slice(&temp[..n]);
-            
-            if let Some(pos) = buffer[search_start..].windows(delimiter.len())
-                .position(|w| w == delimiter)
-            {
-                let actual_pos = search_start + pos;
-                buffer.truncate(actual_pos);
-                
-                // Seek reader to right after delimiter
-                let overshoot = buffer.len() + delimiter.len() - (search_start + pos + delimiter.len());
-                reader.seek_relative(-(overshoot as i64))?;
-                
-                break;
-            }
-        }
-        
-        // Parse pairs (u8, u32)
-        let mut queue = Queue::new();
-
-        for chunk in buffer.chunks_exact(5) {
-            let byte = chunk[0];
-            let freq = u32::from_be_bytes([chunk[1], chunk[2], chunk[3], chunk[4]]);
-            queue.add(Box::new(Node::new(byte, freq as usize)));
-        }
-
-        let root = Self::build(&mut queue);
-        let lookup = Self::generate_lookup(&root);
-        let freqs = [0; 256];
-
-        Ok(Self{
-            root, lookup, freqs
-        })
-    }
-    
-    // Encode &[u8] data
-    // Return BitData (containing offset)
     pub fn encode(&self, data: &[u8]) -> BitData {
         let mut encoded = BitData::new();
 
@@ -217,10 +191,154 @@ impl HuffmanTree {
         encoded
     }
 
-    // Decode &BitData, return Vec<u8> with decoded bits
-    pub fn decode(&self, data: &BitData) -> Vec<u8> {
+    // Write some encoded data to a file (with proper headers)
+    pub fn write_to_file(&self, output: &Path, encoded: &BitData) -> std::io::Result<()> {
+        let file = File::create(output)?;
+        let mut writer = BufWriter::new(file);
+
+        // HUFF header
+        writer.write_all(b"HUFF")?;
+
+        // Offset
+        writer.write_all(&(encoded.offset as u8).to_be_bytes())?;
+
+        // Version number
+        writer.write_all(&VERSION.to_be_bytes())?;
+
+        // Number of (byte, freq) pairs
+        writer.write_all(&(self.unique_bytes as u16).to_be_bytes())?;
+
+        // Byte frequency pairs
+        for (byte, &freq) in self.freqs.iter().enumerate() {
+            if freq != 0 {
+                writer.write_all(&(byte as u8).to_be_bytes())?;
+                writer.write_all(&(freq as u32).to_be_bytes())?;   
+            }
+        }
+        
+        // Write data
+        writer.write_all(&encoded.data)?;
+
+        Ok(())
+    }
+}
+
+pub struct HuffDecoder {
+    root: Box<Node>,
+    offset: u8,
+}
+
+impl HuffDecoder {
+    pub fn from_file_headers(path: &Path) -> io::Result<Self> {
+        let mut reader = BufReader::new(File::open(path)?);
+
+        // 1. Validate "HUFF" header
+        let mut header = [0u8; 4];
+        reader.read_exact(&mut header)?;
+        if &header != b"HUFF" {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid HUFF header"));
+        }
+
+        // 2. Read Offset
+        let mut offset_buf = [0u8; 1];
+        reader.read_exact(&mut offset_buf)?;
+        let offset = offset_buf[0]; 
+
+        // 3. Read Version (Assuming u8/1 byte based on your writer)
+        let mut version_buf = [0u8; 1];
+        reader.read_exact(&mut version_buf)?;
+
+        // 4. Read Count (u16)
+        let mut count_buf = [0u8; 2];
+        reader.read_exact(&mut count_buf)?;
+        let count = u16::from_be_bytes(count_buf);
+
+        let mut queue = Queue::new();
+
+        // 5. Loop over pairs
+        for _ in 0..count {
+            let mut b_buf = [0u8; 1];
+            reader.read_exact(&mut b_buf)?;
+            let byte = b_buf[0];
+
+            let mut f_buf = [0u8; 4];
+            reader.read_exact(&mut f_buf)?;
+            let freq = u32::from_be_bytes(f_buf);
+
+            queue.add(Box::new(Node::new(byte, freq as usize)));
+        }
+
+        let root = from_queue(queue);
+
+        Ok(Self{
+            root,
+            offset,
+        })
+    }
+
+    pub fn decode_file(&self, path: &Path) -> io::Result<Vec<u8>> {
+        let mut reader = BufReader::new(File::open(path)?);
+
+        // 1. Skip Header
+        // We need to read 'count' (at offset 6) to know how long the header is.
+        // HUFF (4) + Offset (1) + Version (1) = 6 bytes
+        reader.seek(SeekFrom::Start(6))?;
+
+        let mut count_buf = [0u8; 2];
+        reader.read_exact(&mut count_buf)?;
+        let count = u16::from_be_bytes(count_buf);
+
+        // Fixed header (8 bytes) + (count * 5 bytes per pair)
+        let header_len = 8 + (count as u64 * 5);
+        reader.seek(SeekFrom::Start(header_len))?;
+
+        // 2. Read Encoded Body
+        let mut encoded_data = Vec::new();
+        reader.read_to_end(&mut encoded_data)?;
+
+        // 3. Decode Bitstream
+        let mut decoded = Vec::new();
+        let mut curr = &self.root; // Start at the tree root
+
+        for (i, &byte) in encoded_data.iter().enumerate() {
+            // Calculate how many bits to read from this byte.
+            // If it's the last byte, we stop before the padding bits (self.offset).
+            let bits_to_read = if i == encoded_data.len() - 1 {
+                8 - self.offset
+            } else {
+                8
+            };
+
+            for bit_idx in 0..bits_to_read {
+                // Extract bit from MSB to LSB
+                let bit = (byte >> (7 - bit_idx)) & 1;
+
+                // Traverse Tree: 0 = Left, 1 = Right
+                if bit == 0 {
+                    if let Some(ref left) = curr.left {
+                        curr = left;
+                    }
+                } else {
+                    if let Some(ref right) = curr.right {
+                        curr = right;
+                    }
+                }
+
+                // If Leaf Node, append data and reset to root
+                if curr.left.is_none() && curr.right.is_none() {
+                    decoded.push(curr.byte.unwrap()); // Replace .byte with your node's value field
+                    curr = &self.root;
+                }
+            }
+        }
+
+        Ok(decoded)
+    }
+
+    // Debug use
+    pub fn decode_data_from_encoder(encoder: &HuffEncoder, data: &BitData) -> Vec<u8> {
         let mut decoded: Vec<u8> = Vec::new();
-        let mut head = &self.root;
+        let mut head = &encoder.root;
         let stored_bits = 8 * (data.data.len() - 1) + data.offset;
 
         for i in 0..stored_bits {
@@ -235,7 +353,7 @@ impl HuffmanTree {
                 // Found a leaf
                 if let Some(byte) = &head.byte {
                     decoded.push(*byte);
-                    head = &self.root;
+                    head = &encoder.root;
                 }
             }
 
@@ -246,109 +364,11 @@ impl HuffmanTree {
                 // Found a leaf
                 if let Some(byte) = &head.byte {
                     decoded.push(*byte);
-                    head = &self.root;
+                    head = &encoder.root;
                 }
             }
         }
         
         decoded
-    }
-
-    // Write encoded &BitData (for offset) to a file)
-    pub fn write(&self, output: &Path, encoded_data: &BitData) -> std::io::Result<()> {
-        let file = File::create(output)?;
-        let mut writer = BufWriter::new(file);
-
-        // HUFF header
-        writer.write_all(b"HUFF")?;
-
-        // Offset
-        writer.write_all(&(encoded_data.offset as u8).to_be_bytes())?;
-
-        // Version number
-        writer.write_all(&VERSION.to_be_bytes())?;
-
-        // Byte frequency pairs
-        for (byte, &freq) in self.freqs.iter().enumerate() {
-            if freq != 0 {
-                writer.write_all(&(byte as u8).to_be_bytes())?;
-                writer.write_all(&(freq as u32).to_be_bytes())?;   
-            }
-        }
-
-        // End of table
-        writer.write_all(b"######")?;
-        
-        // Write data
-        writer.write_all(&encoded_data.data)?;
-
-        Ok(())
-    }
-
-    fn into_str(code: &[bool]) -> String {
-        code.iter()
-            .map(|&b| if b {'1'} else {'0'})
-            .collect()
-    }
-
-    // Builds a tree from queue, returns root Box<Node>
-    // TODO: handle len() == 1
-    fn build(queue: &mut Queue) -> Box<Node> {
-        while queue.heap.len() > 1 {
-            let left = queue.pop_min();
-            let right = queue.pop_min();
-            let freq = left.freq + right.freq;
-
-            let combined = Box::new(Node {
-                left: Some(left),
-                right: Some(right),
-                byte: None,
-                freq,
-            });
-
-            queue.add(combined);
-        }
-
-        queue.pop_min()
-    }
-
-    // Return a hashtable of codes
-    fn generate_lookup(root: &Box<Node>) -> HashMap<u8, Vec<bool>> {
-        let mut codes = HashMap::new();
-        let mut prefix_buffer = Vec::new();
-        Self::lookup_recurse(root, &mut prefix_buffer, &mut codes);        
-        codes
-    }
-
-    fn lookup_recurse(node: &Node, prefix: &mut Vec<bool>, map: &mut HashMap<u8, Vec<bool>>) {
-        // Node is a leaf
-        if let Some(b) = node.byte {
-            map.insert(b, prefix.clone());
-            return;
-        }
-
-        // If left exists, recurse
-        if let Some(left_node) = &node.left {
-            // Run Self::lookup_recurse with a temporarily modified vec (then backtrack -- drop the appendix)
-            prefix.push(false);
-            Self::lookup_recurse(left_node, prefix, map);
-            prefix.pop();
-        }
-
-        // If right exists, recurse
-        if let Some(right_node) = &node.right {
-            prefix.push(true);
-            Self::lookup_recurse(right_node, prefix, map);
-            prefix.pop();
-        }
-    }
-}
-
-impl fmt::Display for HuffmanTree {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.lookup.iter()
-            .try_for_each(|(byte, code)|
-                writeln!(f, "'{}': {}", *byte as char, Self::into_str(code))
-            )
-    }
+    } 
 }

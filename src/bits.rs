@@ -1,5 +1,6 @@
 use std::fmt;
 
+#[allow(dead_code)]
 pub struct BitData {
     pub data: Vec<u8>,
     pub offset: usize,
@@ -30,7 +31,6 @@ impl BitData {
 
     pub fn flush(&mut self) {
         self.data.push(self.buffer);
-        self.offset = 0;
         self.buffer = 0;
     }
 }

@@ -279,70 +279,38 @@ impl HuffDecoder {
     pub fn decode_file(&self, path: &Path) -> io::Result<Vec<u8>> {
         let mut reader = BufReader::new(File::open(path)?);
 
-        // 1. Skip Header
-        // We need to read 'count' (at offset 6) to know how long the header is.
-        // HUFF (4) + Offset (1) + Version (1) = 6 bytes
+        // 1. Calculate Header Size to Skip
+        // Move to where the 'count' (u16) is stored: index 6
         reader.seek(SeekFrom::Start(6))?;
 
         let mut count_buf = [0u8; 2];
         reader.read_exact(&mut count_buf)?;
         let count = u16::from_be_bytes(count_buf);
 
-        // Fixed header (8 bytes) + (count * 5 bytes per pair)
+        // Header = HUFF (4) + Offset (1) + Ver (1) + Count (2) + (5 bytes * count)
+        //        = 8 + (5 * count)
         let header_len = 8 + (count as u64 * 5);
+
+        // 2. Skip to Data
         reader.seek(SeekFrom::Start(header_len))?;
 
-        // 2. Read Encoded Body
-        let mut encoded_data = Vec::new();
-        reader.read_to_end(&mut encoded_data)?;
+        // 3. Read Raw Encoded Data
+        let mut buffer = Vec::new();
+        reader.read_to_end(&mut buffer)?;
 
-        // 3. Decode Bitstream
-        let mut decoded = Vec::new();
-        let mut curr = &self.root; // Start at the tree root
-
-        for (i, &byte) in encoded_data.iter().enumerate() {
-            // Calculate how many bits to read from this byte.
-            // If it's the last byte, we stop before the padding bits (self.offset).
-            let bits_to_read = if i == encoded_data.len() - 1 {
-                8 - self.offset
-            } else {
-                8
-            };
-
-            for bit_idx in 0..bits_to_read {
-                // Extract bit from MSB to LSB
-                let bit = (byte >> (7 - bit_idx)) & 1;
-
-                // Traverse Tree: 0 = Left, 1 = Right
-                if bit == 0 {
-                    if let Some(ref left) = curr.left {
-                        curr = left;
-                    }
-                } else {
-                    if let Some(ref right) = curr.right {
-                        curr = right;
-                    }
-                }
-
-                // If Leaf Node, append data and reset to root
-                if curr.left.is_none() && curr.right.is_none() {
-                    decoded.push(curr.byte.unwrap()); // Replace .byte with your node's value field
-                    curr = &self.root;
-                }
-            }
-        }
-
-        Ok(decoded)
+        // 4. Delegate to your existing function
+        // Passing the raw bytes and the padding offset stored in struct
+        Ok(Self::decode_data_from_root(&self.root, &buffer, self.offset.into()))
     }
 
     // Debug use
-    pub fn decode_data_from_encoder(encoder: &HuffEncoder, data: &BitData) -> Vec<u8> {
+    pub fn decode_data_from_root(root: &Box<Node>, data: &[u8], offset: usize) -> Vec<u8> {
         let mut decoded: Vec<u8> = Vec::new();
-        let mut head = &encoder.root;
-        let stored_bits = 8 * (data.data.len() - 1) + data.offset;
+        let mut head = root;
+        let stored_bits = 8 * (data.len() - 1) + offset;
 
         for i in 0..stored_bits {
-            let current_byte = data.data[i / 8];
+            let current_byte = data[i / 8];
             let bit_index = i % 8;
 
             // Evaluate bit at bit_index of current_byte
@@ -353,7 +321,7 @@ impl HuffDecoder {
                 // Found a leaf
                 if let Some(byte) = &head.byte {
                     decoded.push(*byte);
-                    head = &encoder.root;
+                    head = root;
                 }
             }
 
@@ -364,7 +332,7 @@ impl HuffDecoder {
                 // Found a leaf
                 if let Some(byte) = &head.byte {
                     decoded.push(*byte);
-                    head = &encoder.root;
+                    head = root;
                 }
             }
         }

@@ -1,16 +1,14 @@
 use std::collections::HashMap;
-// use std::fmt;
+use std::fmt;
 
 use std::path::Path;
 use std::fs::File;
-use std::io::{BufReader, Read, Seek};
-use std::io::{self, Write, BufWriter, SeekFrom};
+use std::io::{self, Read, Write, BufReader, BufWriter};
 
 use crate::BitData;
 
 const VERSION: u8 = 1;
 
-#[allow(dead_code)]
 struct Node {
     left: Option<Box<Node>>,
     right: Option<Box<Node>>,
@@ -34,6 +32,7 @@ struct Queue {
     heap: Vec<Box<Node>>,
 }
 
+#[allow(dead_code)]
 impl Queue {
     fn new() -> Self {
         Self {
@@ -97,7 +96,7 @@ impl Queue {
     }
 }
 
-// Create a tree (return Box<Node>) from a queue
+// Create a tree from a queue; return root Box<Node>
 fn from_queue(mut queue: Queue) -> Box<Node> {
     while queue.heap.len() > 1 {
         let left = queue.pop_min();
@@ -148,13 +147,14 @@ fn lookup_recurse(node: &Node, prefix: &mut Vec<bool>, map: &mut HashMap<u8, Vec
 }
 
 pub struct HuffEncoder {
-    lookup: HashMap<u8, Vec<bool>>,
+    root: Box<Node>,
     freqs: [usize; 256],
     unique_bytes: usize,
-    root: Box<Node>,
+    lookup: HashMap<u8, Vec<bool>>,
 }
 
 impl HuffEncoder {
+    // Create a HuffEncoder from data
     pub fn from_vec(data: &[u8]) -> Self {
         let mut freqs = [0usize; 256];
         let mut queue = Queue::new();
@@ -162,18 +162,15 @@ impl HuffEncoder {
         for &byte in data {
             freqs[byte as usize] += 1;
         }
-
-        // .into_iter() creates an iterator of values (not references)
-        // They are moved, not referenced, but freqs is of Copy, so they're copied anyway
+        
         let mut unique_bytes = 0;
-        freqs.into_iter()
-            .enumerate()
-            .filter(|&(_, freq)| freq != 0)
-            .for_each(|(byte, freq)| {
+
+        for (byte, &freq) in freqs.iter().enumerate() {
+            if freq != 0 {
                 unique_bytes += 1;
                 queue.add(Box::new(Node::new(byte as u8, freq)))
             }
-            );
+        }
 
         let root = from_queue(queue);
         let lookup = generate_lookup(&root);
@@ -181,6 +178,7 @@ impl HuffEncoder {
         Self { lookup, freqs, root, unique_bytes }
     }
 
+    // Encode data (could differ from srouce data for generality)
     pub fn encode(&self, data: &[u8]) -> BitData {
         let mut encoded = BitData::new();
 
@@ -193,8 +191,8 @@ impl HuffEncoder {
         encoded
     }
 
-    // Write some encoded data to a file (with proper headers)
-    pub fn write_to_file(&self, output: &Path, encoded: &BitData) -> std::io::Result<()> {
+    // Write encoded to output
+    pub fn write_to_file(&self, output: &Path, encoded: &BitData) -> io::Result<()> {
         let file = File::create(output)?;
         let mut writer = BufWriter::new(file);
 
@@ -232,6 +230,7 @@ pub struct HuffDecoder {
 }
 
 impl HuffDecoder {
+    // Create a HuffDecoder from file headers
     pub fn from_file_headers(path: &Path) -> io::Result<Self> {
         let mut reader = BufReader::new(File::open(path)?);
 
@@ -280,18 +279,16 @@ impl HuffDecoder {
         })
     }
 
-    pub fn decode_file(&mut self, path: &Path) -> io::Result<Vec<u8>> {
-        // 3. Read Raw Encoded Data
+    // Actually decode file under self.reader
+    pub fn decode_file(&mut self) -> io::Result<Vec<u8>> {
         let mut buffer = Vec::new();
         self.reader.read_to_end(&mut buffer)?;
-
-        // 4. Delegate to your existing function
-        // Passing the raw bytes and the padding offset stored in struct
-        Ok(Self::decode_data_from_root(&self.root, &buffer, self.offset.into()))
+        let decoded = Self::decode_from_root(&self.root, &buffer, self.offset.into());
+        Ok(decoded)
     }
 
-    // Debug use
-    fn decode_data_from_root(root: &Box<Node>, data: &[u8], offset: usize) -> Vec<u8> {
+    // Decode data based on root tree (no reader)
+    fn decode_from_root(root: &Box<Node>, data: &[u8], offset: usize) -> Vec<u8> {
         let mut decoded: Vec<u8> = Vec::new();
         let mut head = root;
         let stored_bits = 8 * (data.len() - 1) + offset;
@@ -301,7 +298,7 @@ impl HuffDecoder {
             let bit_index = i % 8;
 
             // Evaluate bit at bit_index of current_byte
-            if current_byte & (1 << 7 - bit_index) != 0 {
+            if current_byte & (1 << (7 - bit_index)) != 0 {
                 // Decoding 1, move head to right Node
                 head = head.right.as_ref().unwrap();
 
@@ -325,5 +322,15 @@ impl HuffDecoder {
         }
         
         decoded
+    }
+}
+
+impl fmt::Display for HuffEncoder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.lookup.iter()
+            .try_for_each(|(byte, code)| {
+                let code: String = code.iter().map(|&b| if b {'1'} else {'0'}).collect();
+                writeln!(f, "'{}': {}", *byte as char, code)
+            })
     }
 }

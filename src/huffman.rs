@@ -1,8 +1,9 @@
 use std::collections::HashMap;
+use std::time::Instant;
 use std::fmt;
 
 use std::path::Path;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{self, Read, Write, BufReader, BufWriter};
 
 use crate::BitData;
@@ -76,6 +77,7 @@ impl Queue {
         }
     }
 
+    // Could result in indeterministic trees!
     fn build_heap(&mut self) {
         for i in (0..=(self.heap.len() / 2 - 1)).rev() {
             self.heapify(i);
@@ -98,6 +100,8 @@ impl Queue {
 
 // Create a tree from a queue; return root Box<Node>
 fn from_queue(mut queue: Queue) -> Box<Node> {
+    let start = Instant::now();
+
     while queue.heap.len() > 1 {
         let left = queue.pop_min();
         let right = queue.pop_min();
@@ -113,13 +117,18 @@ fn from_queue(mut queue: Queue) -> Box<Node> {
         queue.add(combined);
     }
 
+    println!("{}µs\t building tree from queue", start.elapsed().as_micros());
     queue.pop_min()
 }
 
 fn generate_lookup(root: &Box<Node>) -> HashMap<u8, Vec<bool>> {
+    let start = Instant::now();
+
     let mut codes = HashMap::new();
     let mut prefix_buffer = Vec::new();
-    lookup_recurse(root, &mut prefix_buffer, &mut codes);        
+    lookup_recurse(root, &mut prefix_buffer, &mut codes);   
+
+    println!("{}µs\t generating lookup", start.elapsed().as_micros());
     codes
 }
 
@@ -156,6 +165,8 @@ pub struct HuffEncoder {
 impl HuffEncoder {
     // Create a HuffEncoder from data
     pub fn from_vec(data: &[u8]) -> Self {
+        let start = Instant::now();
+
         let mut freqs = [0usize; 256];
         let mut queue = Queue::new();
 
@@ -175,11 +186,23 @@ impl HuffEncoder {
         let root = from_queue(queue);
         let lookup = generate_lookup(&root);
 
+        println!("{}ms\t parsing data", start.elapsed().as_millis());
+
         Self { lookup, freqs, root, unique_bytes }
+    }
+
+    // // Create a HuffEncoder from an uncompressed file
+    pub fn from_file(path: &Path) -> io::Result<Self> {
+        let start = Instant::now();
+        let data: Vec<u8> = fs::read(path)?;
+        println!("{}µs\t reading file", start.elapsed().as_micros());
+        Ok(Self::from_vec(&data))
     }
 
     // Encode data (could differ from srouce data for generality)
     pub fn encode(&self, data: &[u8]) -> BitData {
+        let start = Instant::now();
+
         let mut encoded = BitData::new();
 
         for raw_byte in data {
@@ -188,6 +211,8 @@ impl HuffEncoder {
         }
 
         encoded.flush();
+
+        println!("{}ms\t encoding data", start.elapsed().as_millis());
         encoded
     }
 
@@ -232,6 +257,8 @@ pub struct HuffDecoder {
 impl HuffDecoder {
     // Create a HuffDecoder from file headers
     pub fn from_file_headers(path: &Path) -> io::Result<Self> {
+        let start = Instant::now();
+
         let mut reader = BufReader::new(File::open(path)?);
 
         // 1. Validate "HUFF" header
@@ -272,6 +299,8 @@ impl HuffDecoder {
 
         let root = from_queue(queue);
 
+        println!("{}µs\t parsing file headers", start.elapsed().as_micros());
+
         Ok(Self{
             root,
             offset,
@@ -281,14 +310,22 @@ impl HuffDecoder {
 
     // Actually decode file under self.reader
     pub fn decode_file(&mut self) -> io::Result<Vec<u8>> {
+        let start = Instant::now();
+        
         let mut buffer = Vec::new();
         self.reader.read_to_end(&mut buffer)?;
+
+        println!("{}µs\t reading file", start.elapsed().as_micros());
+
         let decoded = Self::decode_from_root(&self.root, &buffer, self.offset.into());
+
         Ok(decoded)
     }
 
     // Decode data based on root tree (no reader)
     fn decode_from_root(root: &Box<Node>, data: &[u8], offset: usize) -> Vec<u8> {
+        let start = Instant::now();
+
         let mut decoded: Vec<u8> = Vec::new();
         let mut head = root;
         let stored_bits = 8 * (data.len() - 1) + offset;
@@ -321,6 +358,7 @@ impl HuffDecoder {
             }
         }
         
+        println!("{}ms\t decoding from root", start.elapsed().as_millis());
         decoded
     }
 }

@@ -6,97 +6,10 @@ use std::path::Path;
 use std::fs::{self, File};
 use std::io::{self, Read, Write, BufReader, BufWriter};
 
-use crate::BitData;
+use crate::bits::BitData;
+use crate::queue::{Node, Queue};
 
 const VERSION: u8 = 1;
-
-struct Node {
-    left: Option<Box<Node>>,
-    right: Option<Box<Node>>,
-    byte: Option<u8>,
-    freq: usize,
-}
-
-#[allow(dead_code)]
-impl Node {
-    fn new(byte: u8, freq: usize) -> Self {
-        Self {
-            left: None,
-            right: None,
-            byte: Some(byte),
-            freq
-        } 
-    }
-}
-
-struct Queue {
-    heap: Vec<Box<Node>>,
-}
-
-#[allow(dead_code)]
-impl Queue {
-    fn new() -> Self {
-        Self {
-            heap: Vec::new()
-        }
-    }
-
-    fn heapify(&mut self, i: usize) {
-        if self.heap.len() < 2 {
-            return;
-        }
-
-        let left = 2 * i + 1;
-        let right = left + 1;
-        let mut min = i;
-
-        if left < self.heap.len() && self.heap[left].freq < self.heap[min].freq {
-            min = left;
-        }
-
-        if right < self.heap.len() && self.heap[right].freq < self.heap[min].freq {
-            min = right;
-        }
-
-        if min != i {
-            self.heap.swap(min, i);
-            self.heapify(min);
-        }
-    }
-
-    fn heapify_up(&mut self, mut i: usize) {
-        while i != 0 {
-            let parent = (i - 1) / 2;
-
-            if self.heap[parent].freq <= self.heap[i].freq {
-                break;
-            }
-
-            self.heap.swap(parent, i);
-            i = parent;
-        }
-    }
-
-    // Could result in indeterministic trees!
-    fn build_heap(&mut self) {
-        for i in (0..=(self.heap.len() / 2 - 1)).rev() {
-            self.heapify(i);
-        }
-    }
-
-    // Could return Result / Option for safety (but it should never fail with Huffman)
-    fn pop_min(&mut self) -> Box<Node> {
-        // Return item at [0], swap with last
-        let min = self.heap.swap_remove(0);
-        self.heapify(0);
-        min
-    }
-
-    fn add(&mut self, node: Box<Node>) {
-        self.heap.push(node);
-        self.heapify_up(self.heap.len() - 1)
-    }
-}
 
 // Create a tree from a queue; return root Box<Node>
 fn from_queue(mut queue: Queue) -> Box<Node> {
@@ -121,6 +34,7 @@ fn from_queue(mut queue: Queue) -> Box<Node> {
     queue.pop_min()
 }
 
+// Generate codes
 fn generate_lookup(root: &Box<Node>) -> HashMap<u8, Vec<bool>> {
     let start = Instant::now();
 
@@ -153,6 +67,18 @@ fn lookup_recurse(node: &Node, prefix: &mut Vec<bool>, map: &mut HashMap<u8, Vec
         lookup_recurse(right_node, prefix, map);
         prefix.pop();
     }
+}
+
+// Create HuffEncoder with encoded file
+pub fn encode_file(path: impl AsRef<Path>) -> io::Result<(HuffEncoder, BitData)> {
+    let start = Instant::now();
+    let data: Vec<u8> = fs::read(path)?;
+    println!("{}µs\t reading file", start.elapsed().as_micros());
+
+    let encoder = HuffEncoder::from_vec(&data);
+    let encoded = encoder.encode(&data);
+
+    Ok((encoder, encoded))
 }
 
 pub struct HuffEncoder {
@@ -191,14 +117,6 @@ impl HuffEncoder {
         Self { lookup, freqs, root, unique_bytes }
     }
 
-    // // Create a HuffEncoder from an uncompressed file
-    pub fn from_file(path: &Path) -> io::Result<Self> {
-        let start = Instant::now();
-        let data: Vec<u8> = fs::read(path)?;
-        println!("{}µs\t reading file", start.elapsed().as_micros());
-        Ok(Self::from_vec(&data))
-    }
-
     // Encode data (could differ from srouce data for generality)
     pub fn encode(&self, data: &[u8]) -> BitData {
         let start = Instant::now();
@@ -217,7 +135,7 @@ impl HuffEncoder {
     }
 
     // Write encoded to output
-    pub fn write_to_file(&self, output: &Path, encoded: &BitData) -> io::Result<()> {
+    pub fn write_to_file(&self, output: impl AsRef<Path>, encoded: &BitData) -> io::Result<()> {
         let file = File::create(output)?;
         let mut writer = BufWriter::new(file);
 
@@ -251,12 +169,11 @@ impl HuffEncoder {
 pub struct HuffDecoder {
     root: Box<Node>,
     offset: u8,
-    reader: BufReader<File>,
 }
 
 impl HuffDecoder {
     // Create a HuffDecoder from file headers
-    pub fn from_file_headers(path: &Path) -> io::Result<Self> {
+    pub fn decode_file(path: impl AsRef<Path>) -> io::Result<(Self, Vec<u8>)> {
         let start = Instant::now();
 
         let mut reader = BufReader::new(File::open(path)?);
@@ -301,25 +218,14 @@ impl HuffDecoder {
 
         println!("{}µs\t parsing file headers", start.elapsed().as_micros());
 
-        Ok(Self{
-            root,
-            offset,
-            reader
-        })
-    }
-
-    // Actually decode file under self.reader
-    pub fn decode_file(&mut self) -> io::Result<Vec<u8>> {
-        let start = Instant::now();
-        
         let mut buffer = Vec::new();
-        self.reader.read_to_end(&mut buffer)?;
+        reader.read_to_end(&mut buffer)?;
 
         println!("{}µs\t reading file", start.elapsed().as_micros());
 
-        let decoded = Self::decode_from_root(&self.root, &buffer, self.offset.into());
+        let decoded = Self::decode_from_root(&root, &buffer, offset.into());
 
-        Ok(decoded)
+        Ok((Self {root, offset}, decoded))
     }
 
     // Decode data based on root tree (no reader)

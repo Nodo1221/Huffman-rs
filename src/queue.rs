@@ -65,7 +65,6 @@ impl Queue {
         }
     }
 
-    // Could result in indeterministic trees!
     pub fn build_heap(&mut self) {
         for i in (0..=(self.heap.len() / 2 - 1)).rev() {
             self.heapify(i);

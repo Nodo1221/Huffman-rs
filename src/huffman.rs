@@ -11,7 +11,7 @@ use crate::queue::{Node, Queue};
 
 const VERSION: u8 = 1;
 
-// Create a tree from a queue; return root Box<Node>
+// Create a tree from a queue
 fn from_queue(mut queue: Queue) -> Box<Node> {
     let start = Instant::now();
 
@@ -42,10 +42,11 @@ fn generate_lookup(root: &Box<Node>) -> HashMap<u8, Vec<bool>> {
     let mut prefix_buffer = Vec::new();
     lookup_recurse(root, &mut prefix_buffer, &mut codes);   
 
-    println!("{}µs\t generating lookup", start.elapsed().as_micros());
+    print_time("generating lookup", start);
     codes
 }
 
+// Helper generator function
 fn lookup_recurse(node: &Node, prefix: &mut Vec<bool>, map: &mut HashMap<u8, Vec<bool>>) {
     // Node is a leaf
     if let Some(b) = node.byte {
@@ -69,17 +70,6 @@ fn lookup_recurse(node: &Node, prefix: &mut Vec<bool>, map: &mut HashMap<u8, Vec
     }
 }
 
-// Create HuffEncoder with encoded file
-pub fn encode_file(path: impl AsRef<Path>) -> io::Result<(HuffEncoder, BitData)> {
-    let start = Instant::now();
-    let data: Vec<u8> = fs::read(path)?;
-    println!("{}µs\t reading file", start.elapsed().as_micros());
-
-    let encoder = HuffEncoder::from_vec(&data);
-    let encoded = encoder.encode(&data);
-
-    Ok((encoder, encoded))
-}
 
 pub struct HuffEncoder {
     root: Box<Node>,
@@ -89,6 +79,19 @@ pub struct HuffEncoder {
 }
 
 impl HuffEncoder {
+    // Encode file. Returns HuffEncoder (for later reuse) and encoded BitData
+    pub fn encode_file(path: impl AsRef<Path>) -> io::Result<(Self, BitData)> {
+        let start = Instant::now();
+
+        let data: Vec<u8> = fs::read(path)?;
+        print_time("reading file", start);
+        
+        let encoder = HuffEncoder::from_vec(&data);
+        let encoded = encoder.encode(&data);
+
+        Ok((encoder, encoded))
+    }
+
     // Create a HuffEncoder from data
     pub fn from_vec(data: &[u8]) -> Self {
         let start = Instant::now();
@@ -112,12 +115,12 @@ impl HuffEncoder {
         let root = from_queue(queue);
         let lookup = generate_lookup(&root);
 
-        println!("{}ms\t parsing data", start.elapsed().as_millis());
+        print_time("parsing data", start);
 
         Self { lookup, freqs, root, unique_bytes }
     }
 
-    // Encode data (could differ from srouce data for generality)
+    // Encode data
     pub fn encode(&self, data: &[u8]) -> BitData {
         let start = Instant::now();
 
@@ -130,12 +133,12 @@ impl HuffEncoder {
 
         encoded.flush();
 
-        println!("{}ms\t encoding data", start.elapsed().as_millis());
+        print_time("encoding data", start);
         encoded
     }
 
     // Write encoded to output
-    pub fn write_to_file(&self, output: impl AsRef<Path>, encoded: &BitData) -> io::Result<()> {
+    pub fn write_file(&self, output: impl AsRef<Path>, encoded: &BitData) -> io::Result<()> {
         let file = File::create(output)?;
         let mut writer = BufWriter::new(file);
 
@@ -168,11 +171,10 @@ impl HuffEncoder {
 
 pub struct HuffDecoder {
     root: Box<Node>,
-    offset: u8,
 }
 
 impl HuffDecoder {
-    // Create a HuffDecoder from file headers
+    // Create a HuffDecoder from file headers and decode file
     pub fn decode_file(path: impl AsRef<Path>) -> io::Result<(Self, Vec<u8>)> {
         let start = Instant::now();
 
@@ -216,20 +218,22 @@ impl HuffDecoder {
 
         let root = from_queue(queue);
 
-        println!("{}µs\t parsing file headers", start.elapsed().as_micros());
+        print_time("parsing headers", start);
+
+        let start = Instant::now();
 
         let mut buffer = Vec::new();
         reader.read_to_end(&mut buffer)?;
 
-        println!("{}µs\t reading file", start.elapsed().as_micros());
+        print_time("reading file", start);
 
         let decoded = Self::decode_from_root(&root, &buffer, offset.into());
 
-        Ok((Self {root, offset}, decoded))
+        Ok((Self {root}, decoded))
     }
 
     // Decode data based on root tree (no reader)
-    fn decode_from_root(root: &Box<Node>, data: &[u8], offset: usize) -> Vec<u8> {
+    pub fn decode_from_root(root: &Box<Node>, data: &[u8], offset: usize) -> Vec<u8> {
         let start = Instant::now();
 
         let mut decoded: Vec<u8> = Vec::new();
@@ -264,7 +268,7 @@ impl HuffDecoder {
             }
         }
         
-        println!("{}ms\t decoding from root", start.elapsed().as_millis());
+        print_time("decoding from root", start);
         decoded
     }
 }
@@ -276,5 +280,16 @@ impl fmt::Display for HuffEncoder {
                 let code: String = code.iter().map(|&b| if b {'1'} else {'0'}).collect();
                 writeln!(f, "'{}': {}", *byte as char, code)
             })
+    }
+}
+
+fn print_time(label: &str, start: Instant) {
+    let nanos = start.elapsed().as_nanos();
+
+    match nanos {
+        n if n < 1_000 => println!("{}ns\t{}", n, label),
+        n if n < 1_000_000 => println!("{:.0}µs\t{}", n as f64 / 1_000.0, label),
+        n if n < 1_000_000_000 => println!("{:.0}ms\t{}", n as f64 / 1_000_000.0, label),
+        n => println!("{:.2}s\t{}", n as f64 / 1_000_000_000.0, label),
     }
 }

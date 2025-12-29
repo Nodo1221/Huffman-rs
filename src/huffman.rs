@@ -11,31 +11,8 @@ use crate::queue::{Node, Queue};
 
 const VERSION: u8 = 1;
 
-// Create a tree from a queue
-// fn from_queue(mut queue: Queue) -> Box<Node> {
-//     let start = Instant::now();
-
-//     while queue.heap.len() > 1 {
-//         let left = queue.pop_min();
-//         let right = queue.pop_min();
-//         let freq = left.freq + right.freq;
-
-//         let combined = Box::new(Node {
-//             left: Some(left),
-//             right: Some(right),
-//             byte: None,
-//             freq,
-//         });
-
-//         queue.add(combined);
-//     }
-
-//     println!("{}µs\t building tree from queue", start.elapsed().as_micros());
-//     queue.pop_min()
-// }
-
 pub struct HuffEncoder {
-    root: Box<Node>,
+    tree: Box<Node>,
     freqs: [usize; 256],
     unique_bytes: usize,
     lookup: HashMap<u8, Vec<bool>>,
@@ -75,12 +52,12 @@ impl HuffEncoder {
             }
         }
 
-        let root = queue.generate_tree();
-        let lookup = Self::generate_lookup(&root);
+        let tree = queue.build_tree();
+        let lookup = Self::generate_lookup(&tree);
 
         crate::print_time("parsing data", start);
 
-        Self { lookup, freqs, root, unique_bytes }
+        Self { lookup, freqs, tree, unique_bytes }
     }
 
     // Encode data
@@ -132,7 +109,7 @@ impl HuffEncoder {
     }
 
     // Generate codes
-    fn generate_lookup(root: &Box<Node>) -> HashMap<u8, Vec<bool>> {
+    fn generate_lookup(tree: &Box<Node>) -> HashMap<u8, Vec<bool>> {
         // Helper generator function
         fn resurse(node: &Node, prefix: &mut Vec<bool>, map: &mut HashMap<u8, Vec<bool>>) {
             // Node is a leaf
@@ -161,7 +138,7 @@ impl HuffEncoder {
 
         let mut codes = HashMap::new();
         let mut prefix_buffer = Vec::new();
-        resurse(root, &mut prefix_buffer, &mut codes);   
+        resurse(tree, &mut prefix_buffer, &mut codes);   
 
         crate::print_time("generating lookup", start);
         codes
@@ -169,7 +146,7 @@ impl HuffEncoder {
 }
 
 pub struct HuffDecoder {
-    root: Box<Node>,
+    tree: Box<Node>,
 }
 
 impl HuffDecoder {
@@ -215,7 +192,7 @@ impl HuffDecoder {
             queue.add(Box::new(Node::new(byte, freq as usize)));
         }
 
-        let root = queue.generate_tree();
+        let tree = queue.build_tree();
 
         crate::print_time("parsing headers", start);
 
@@ -226,17 +203,17 @@ impl HuffDecoder {
 
         crate::print_time("reading file", start);
 
-        let decoded = Self::decode_from_root(&root, &buffer, offset.into());
+        let decoded = Self::decode_from_tree(&tree, &buffer, offset.into());
 
-        Ok((Self {root}, decoded))
+        Ok((Self {tree}, decoded))
     }
 
-    // Decode data based on root tree (no reader)
-    pub fn decode_from_root(root: &Box<Node>, data: &[u8], offset: usize) -> Vec<u8> {
+    // Decode data based on tree tree (no reader)
+    pub fn decode_from_tree(tree: &Box<Node>, data: &[u8], offset: usize) -> Vec<u8> {
         let start = Instant::now();
 
         let mut decoded: Vec<u8> = Vec::new();
-        let mut head = root;
+        let mut head = tree;
         let stored_bits = 8 * (data.len() - 1) + offset;
 
         for i in 0..stored_bits {
@@ -251,7 +228,7 @@ impl HuffDecoder {
                 // Found a leaf
                 if let Some(byte) = &head.byte {
                     decoded.push(*byte);
-                    head = root;
+                    head = tree;
                 }
             }
 
@@ -262,12 +239,12 @@ impl HuffDecoder {
                 // Found a leaf
                 if let Some(byte) = &head.byte {
                     decoded.push(*byte);
-                    head = root;
+                    head = tree;
                 }
             }
         }
         
-        crate::print_time("decoding from root", start);
+        crate::print_time("decoding from tree", start);
         decoded
     }
 }

@@ -86,7 +86,7 @@ impl Queue {
         self.heapify_up(self.heap.len() - 1)
     }
 
-    pub fn generate_tree(mut self) -> Box<Node> {
+    pub fn build_tree(mut self) -> Box<Node> {
         let start = Instant::now();
 
         while self.heap.len() > 1 {

@@ -12,64 +12,27 @@ use crate::queue::{Node, Queue};
 const VERSION: u8 = 1;
 
 // Create a tree from a queue
-fn from_queue(mut queue: Queue) -> Box<Node> {
-    let start = Instant::now();
+// fn from_queue(mut queue: Queue) -> Box<Node> {
+//     let start = Instant::now();
 
-    while queue.heap.len() > 1 {
-        let left = queue.pop_min();
-        let right = queue.pop_min();
-        let freq = left.freq + right.freq;
+//     while queue.heap.len() > 1 {
+//         let left = queue.pop_min();
+//         let right = queue.pop_min();
+//         let freq = left.freq + right.freq;
 
-        let combined = Box::new(Node {
-            left: Some(left),
-            right: Some(right),
-            byte: None,
-            freq,
-        });
+//         let combined = Box::new(Node {
+//             left: Some(left),
+//             right: Some(right),
+//             byte: None,
+//             freq,
+//         });
 
-        queue.add(combined);
-    }
+//         queue.add(combined);
+//     }
 
-    println!("{}µs\t building tree from queue", start.elapsed().as_micros());
-    queue.pop_min()
-}
-
-// Generate codes
-fn generate_lookup(root: &Box<Node>) -> HashMap<u8, Vec<bool>> {
-    let start = Instant::now();
-
-    let mut codes = HashMap::new();
-    let mut prefix_buffer = Vec::new();
-    lookup_recurse(root, &mut prefix_buffer, &mut codes);   
-
-    print_time("generating lookup", start);
-    codes
-}
-
-// Helper generator function
-fn lookup_recurse(node: &Node, prefix: &mut Vec<bool>, map: &mut HashMap<u8, Vec<bool>>) {
-    // Node is a leaf
-    if let Some(b) = node.byte {
-        map.insert(b, prefix.clone());
-        return;
-    }
-
-    // If left exists, recurse
-    if let Some(left_node) = &node.left {
-        // Run lookup_recurse with a temporarily modified vec (then backtrack -- drop the appendix)
-        prefix.push(false);
-        lookup_recurse(left_node, prefix, map);
-        prefix.pop();
-    }
-
-    // If right exists, recurse
-    if let Some(right_node) = &node.right {
-        prefix.push(true);
-        lookup_recurse(right_node, prefix, map);
-        prefix.pop();
-    }
-}
-
+//     println!("{}µs\t building tree from queue", start.elapsed().as_micros());
+//     queue.pop_min()
+// }
 
 pub struct HuffEncoder {
     root: Box<Node>,
@@ -84,7 +47,7 @@ impl HuffEncoder {
         let start = Instant::now();
 
         let data: Vec<u8> = fs::read(path)?;
-        print_time("reading file", start);
+        crate::print_time("reading file", start);
         
         let encoder = HuffEncoder::from_vec(&data);
         let encoded = encoder.encode(&data);
@@ -112,10 +75,10 @@ impl HuffEncoder {
             }
         }
 
-        let root = from_queue(queue);
-        let lookup = generate_lookup(&root);
+        let root = queue.generate_tree();
+        let lookup = Self::generate_lookup(&root);
 
-        print_time("parsing data", start);
+        crate::print_time("parsing data", start);
 
         Self { lookup, freqs, root, unique_bytes }
     }
@@ -133,7 +96,7 @@ impl HuffEncoder {
 
         encoded.flush();
 
-        print_time("encoding data", start);
+        crate::print_time("encoding data", start);
         encoded
     }
 
@@ -166,6 +129,42 @@ impl HuffEncoder {
         writer.write_all(&encoded.data)?;
 
         Ok(())
+    }
+
+    // Generate codes
+    fn generate_lookup(root: &Box<Node>) -> HashMap<u8, Vec<bool>> {
+        // Helper generator function
+        fn resurse(node: &Node, prefix: &mut Vec<bool>, map: &mut HashMap<u8, Vec<bool>>) {
+            // Node is a leaf
+            if let Some(b) = node.byte {
+                map.insert(b, prefix.clone());
+                return;
+            }
+
+            // If left exists, recurse
+            if let Some(left_node) = &node.left {
+                // Run lookup_recurse with a temporarily modified vec (then backtrack -- drop the appendix)
+                prefix.push(false);
+                resurse(left_node, prefix, map);
+                prefix.pop();
+            }
+
+            // If right exists, recurse
+            if let Some(right_node) = &node.right {
+                prefix.push(true);
+                resurse(right_node, prefix, map);
+                prefix.pop();
+            }
+        }
+
+        let start = Instant::now();
+
+        let mut codes = HashMap::new();
+        let mut prefix_buffer = Vec::new();
+        resurse(root, &mut prefix_buffer, &mut codes);   
+
+        crate::print_time("generating lookup", start);
+        codes
     }
 }
 
@@ -216,16 +215,16 @@ impl HuffDecoder {
             queue.add(Box::new(Node::new(byte, freq as usize)));
         }
 
-        let root = from_queue(queue);
+        let root = queue.generate_tree();
 
-        print_time("parsing headers", start);
+        crate::print_time("parsing headers", start);
 
         let start = Instant::now();
 
         let mut buffer = Vec::new();
         reader.read_to_end(&mut buffer)?;
 
-        print_time("reading file", start);
+        crate::print_time("reading file", start);
 
         let decoded = Self::decode_from_root(&root, &buffer, offset.into());
 
@@ -268,7 +267,7 @@ impl HuffDecoder {
             }
         }
         
-        print_time("decoding from root", start);
+        crate::print_time("decoding from root", start);
         decoded
     }
 }
@@ -280,16 +279,5 @@ impl fmt::Display for HuffEncoder {
                 let code: String = code.iter().map(|&b| if b {'1'} else {'0'}).collect();
                 writeln!(f, "'{}': {}", *byte as char, code)
             })
-    }
-}
-
-fn print_time(label: &str, start: Instant) {
-    let nanos = start.elapsed().as_nanos();
-
-    match nanos {
-        n if n < 1_000 => println!("{}ns\t{}", n, label),
-        n if n < 1_000_000 => println!("{:.0}µs\t{}", n as f64 / 1_000.0, label),
-        n if n < 1_000_000_000 => println!("{:.0}ms\t{}", n as f64 / 1_000_000.0, label),
-        n => println!("{:.2}s\t{}", n as f64 / 1_000_000_000.0, label),
     }
 }

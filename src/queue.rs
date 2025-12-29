@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 pub struct Node {
     pub left: Option<Box<Node>>,
     pub right: Option<Box<Node>>,
@@ -82,5 +84,27 @@ impl Queue {
     pub fn add(&mut self, node: Box<Node>) {
         self.heap.push(node);
         self.heapify_up(self.heap.len() - 1)
+    }
+
+    pub fn generate_tree(mut self) -> Box<Node> {
+        let start = Instant::now();
+
+        while self.heap.len() > 1 {
+            let left = self.pop_min();
+            let right = self.pop_min();
+            let freq = left.freq + right.freq;
+
+            let combined = Box::new(Node {
+                left: Some(left),
+                right: Some(right),
+                byte: None,
+                freq,
+            });
+
+            self.add(combined);
+        }
+
+        crate::print_time("building tree from queue", start);
+        self.pop_min()
     }
 }

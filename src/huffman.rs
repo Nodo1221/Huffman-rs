@@ -110,7 +110,7 @@ impl HuffEncoder {
             }
 
             if let Some(left) = &node.left {
-                recurse(left, prefix >> 1, depth + 1, codes);
+                recurse(left, prefix, depth + 1, codes);
             }
 
             if let Some(right) = &node.right {

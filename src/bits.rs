@@ -1,6 +1,5 @@
 use std::fmt;
 
-#[allow(dead_code)]
 pub struct BitData {
     pub data: Vec<u8>,
     pub capacity: u8,
@@ -11,7 +10,7 @@ impl BitData {
     pub fn new() -> Self {
         Self {
             data: Vec::new(),
-            capacity: 0,
+            capacity: 8,
             buffer: 0,
         }
     }
@@ -53,6 +52,6 @@ impl fmt::Display for BitData {
         for datum in &self.data {
             writeln!(f, "{:08b}", datum)?;
         }
-        writeln!(f, "current offset: {}", self.capacity)
+        write!(f, "current capacity: {}", self.capacity)
     }
 }

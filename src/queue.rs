@@ -7,7 +7,6 @@ pub struct Node {
     pub freq: usize,
 }
 
-#[allow(dead_code)]
 impl Node {
     pub fn new(byte: u8, freq: usize) -> Self {
         Self {
@@ -23,7 +22,6 @@ pub struct Queue {
     pub heap: Vec<Box<Node>>,
 }
 
-#[allow(dead_code)]
 impl Queue {
     pub fn new() -> Self {
         Self {

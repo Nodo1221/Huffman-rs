@@ -25,6 +25,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         std::process::exit(0);
     }
 
+    // Decode
     if args.decode {
         let input = args.input.ok_or("Input file required for decoding")?;
         let (_decoder, decoded) = HuffDecoder::decode_file(input)?;
@@ -37,6 +38,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
+    // Encode
     let (encoder, encoded) = match args.input {
         Some(input) => HuffEncoder::encode_file(input)?,
         None => {
@@ -53,7 +55,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some(output) => encoder.write_file(output, &encoded)?,
         None => match encoded.data.len() {
             100.. => eprintln!("Refusing to print more than 100 bytes"),
-            _ => println!("{}", encoded)
+            _ => {
+                println!("{}", encoder);
+                println!("{}", encoded)
+            }
         }
     }
 

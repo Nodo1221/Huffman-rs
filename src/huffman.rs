@@ -79,7 +79,7 @@ impl HuffEncoder {
         writer.write_all(b"HUFF")?;
 
         // Offset
-        writer.write_all(&(encoded.capacity as u8).to_be_bytes())?;
+        writer.write_all(&(8 - encoded.capacity as u8).to_be_bytes())?;
 
         // Version number
         writer.write_all(&VERSION.to_be_bytes())?;
@@ -176,6 +176,7 @@ impl HuffDecoder {
 
         let tree = queue.build_tree();
 
+        println!("read offset: {}", offset);
         crate::print_time("parsing headers", start);
 
         let start = Instant::now();
@@ -230,12 +231,13 @@ impl HuffDecoder {
     }
 }
 
-// impl fmt::Display for HuffEncoder {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         self.lookup.iter()
-//             .try_for_each(|(byte, code)| {
-//                 let code: String = code.iter().map(|&b| if b {'1'} else {'0'}).collect();
-//                 writeln!(f, "'{}': {}", *byte as char, code)
-//             })
-//     }
-// }
+impl fmt::Display for HuffEncoder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (index, &(code, len)) in self.lookup.iter().enumerate() {
+            if len != 0 {
+                writeln!(f, "'{}' {:0n$b}", index as u8 as char, code >> (32 - len), n = len as usize)?;
+            }
+        }
+        Ok(())
+    }
+}

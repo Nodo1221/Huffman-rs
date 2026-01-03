@@ -7,15 +7,23 @@ struct Writer {
 impl Writer {
     fn add(&mut self, mut byte: u32, mut len: u8) {
         let first = (byte >> 32 - self.capacity) as u8;
-
+        if (len < capacity) {
+            buffer |= first;
+            self.capacity -= len;
+            return;
+        }
+        
         self.data.push(self.buffer | first);
 
+        println!("{:08b}", first);
+
         byte <<= self.capacity;
+        len -= self.capacity;
 
         // let octets = (len - self.capacity + 7) / 8;
-        let octets = (len - self.capacity) / 8;
+        let octets = len / 8;
 
-        println!("len - cap: {}", len - self.capacity);
+        println!("len - cap: {}", len);
         println!("octets: {}", octets);
         println!("pyte: {:032b}", byte);
 
@@ -30,7 +38,7 @@ impl Writer {
 
         self.buffer = last;
 
-        let newcap = 8 - (len - self.capacity - 8 * octets);
+        let newcap = 8 - (len - 8 * octets);
 
         println!("last: {:-8b}", last);
         // let newcap = 8 * octets - (len - self.capacity); // or 8 - (len - self.capacity) % 8
@@ -50,5 +58,6 @@ fn main() {
         capacity: 5,
     };
 
-    w1.add(0b10101010_01011111_01110110_00000000, 23);
+    // w1.add(0b10101010_01011111_01110110_00000000, 23);
+    w1.add(0b11000000_00000000_00000000_00000000, 23);
 }

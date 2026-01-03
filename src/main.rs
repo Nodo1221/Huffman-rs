@@ -36,7 +36,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 io::stdin().read_to_end(&mut buffer).expect("Failed to read from stdin");
 
                 let encoder = HuffEncoder::from_vec(&buffer);
-                let encoded = encoder.encode(&buffer);
+                // let encoded = encoder.encode(&buffer);
+                let encoded = encoder.bitencode(&buffer);
 
                 (encoder, encoded)
             }

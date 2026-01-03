@@ -16,6 +16,7 @@ pub struct HuffEncoder {
     freqs: [usize; 256],
     unique_bytes: usize,
     lookup: HashMap<u8, Vec<bool>>,
+    bitlookup: [(u32, u8); 256],
 }
 
 impl HuffEncoder {
@@ -27,7 +28,8 @@ impl HuffEncoder {
         crate::print_time("reading file", start);
         
         let encoder = HuffEncoder::from_vec(&data);
-        let encoded = encoder.encode(&data);
+        // let encoded = encoder.encode(&data);
+        let encoded = encoder.bitencode(&data);
 
         Ok((encoder, encoded))
     }
@@ -54,10 +56,26 @@ impl HuffEncoder {
 
         let tree = queue.build_tree();
         let lookup = Self::generate_lookup(&tree);
+        let bitlookup = Self::generate_bits(&tree);
 
         crate::print_time("parsing data", start);
 
-        Self { lookup, freqs, tree, unique_bytes }
+        Self { lookup, bitlookup, freqs, tree, unique_bytes }
+    }
+
+    pub fn bitencode(&self, data: &[u8]) -> BitData {
+        let start = Instant::now();
+        let mut encoded = BitData::new();
+
+        for &byte in data {
+            let (code, len) = self.bitlookup[byte as usize];
+            encoded.bitwrite(code, len);
+        }
+
+        crate::print_time("bit encoding data", start);
+
+        encoded.flush();
+        encoded
     }
 
     // Encode data
@@ -66,6 +84,9 @@ impl HuffEncoder {
 
         let mut encoded = BitData::new();
 
+
+        // Encoding via lookup here
+    
         for raw_byte in data {
             let code = self.lookup.get(raw_byte).expect("Broken tree! Missing key in lookup");
             encoded.write(code);
@@ -86,7 +107,7 @@ impl HuffEncoder {
         writer.write_all(b"HUFF")?;
 
         // Offset
-        writer.write_all(&(encoded.offset as u8).to_be_bytes())?;
+        writer.write_all(&(encoded.capacity as u8).to_be_bytes())?;
 
         // Version number
         writer.write_all(&VERSION.to_be_bytes())?;
@@ -109,6 +130,27 @@ impl HuffEncoder {
     }
 
     // Generate codes
+    fn generate_bits(tree: &Box<Node>) -> [(u32, u8); 256] {
+        fn recurse(node: &Node, prefix: u32, depth: u8, codes: &mut [(u32, u8)]) {
+            if let Some(char) = node.byte {
+                codes[char as usize] = (prefix, depth);
+                return;
+            }
+
+            if let Some(left) = &node.left {
+                recurse(left, prefix >> 1, depth + 1, codes);
+            }
+
+            if let Some(right) = &node.right {
+                recurse(right, prefix | 1u32 << (31 - depth), depth + 1, codes);
+            }
+        }
+
+        let mut codes = [(0, 0); 256];
+        recurse(tree, 0u32, 0, &mut codes);
+        codes
+    }
+
     fn generate_lookup(tree: &Box<Node>) -> HashMap<u8, Vec<bool>> {
         // Helper generator function
         fn resurse(node: &Node, prefix: &mut Vec<bool>, map: &mut HashMap<u8, Vec<bool>>) {

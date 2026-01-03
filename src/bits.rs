@@ -3,7 +3,7 @@ use std::fmt;
 #[allow(dead_code)]
 pub struct BitData {
     pub data: Vec<u8>,
-    pub offset: usize,
+    pub capacity: u8,
     buffer: u8,
 }
 
@@ -11,22 +11,48 @@ impl BitData {
     pub fn new() -> Self {
         Self {
             data: Vec::new(),
-            offset: 0,
+            capacity: 0,
             buffer: 0,
         }
     }
 
     pub fn write(&mut self, data: &[bool]) {
         for &datum in data {
-            if self.offset == 8 {
+            if self.capacity == 8 {
                 self.data.push(self.buffer);
-                self.offset = 0;
+                self.capacity = 0;
                 self.buffer = 0;
             }
 
-            self.buffer |= (datum as u8) << (7 - self.offset);
-            self.offset += 1;
+            self.buffer |= (datum as u8) << (7 - self.capacity);
+            self.capacity += 1;
         }
+    }
+
+    pub fn bitwrite(&mut self, mut byte: u32, mut len: u8) {
+        let first = (byte >> 32 - self.capacity) as u8;
+
+        if len < self.capacity {
+            self.buffer |= first;
+            self.capacity -= len;
+            return;
+        }
+
+        self.data.push(self.buffer | first);
+
+        byte <<= self.capacity;
+        len -= self.capacity;
+
+        let octets = len / 8;
+
+        for i in 0..octets {
+            let current: u8 = (byte >> (24 - i * 8)) as u8;
+            self.data.push(current);
+        }
+
+        let last = (byte >> (24 - octets * 8)) as u8;
+        self.buffer = last;
+        self.capacity = 8 - (len - 8 * octets);
     }
 
     pub fn flush(&mut self) {
@@ -40,6 +66,6 @@ impl fmt::Display for BitData {
         for datum in &self.data {
             writeln!(f, "{:08b}", datum)?;
         }
-        writeln!(f, "current offset: {}", self.offset)
+        writeln!(f, "current offset: {}", self.capacity)
     }
 }

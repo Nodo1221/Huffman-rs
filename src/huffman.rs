@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::time::Instant;
 use std::fmt;
 
@@ -14,30 +13,26 @@ const VERSION: u8 = 1;
 pub struct HuffEncoder {
     tree: Box<Node>,
     freqs: [usize; 256],
-    unique_bytes: usize,
-    lookup: HashMap<u8, Vec<bool>>,
-    bitlookup: [(u32, u8); 256],
+    unique_bytes: u16,
+    lookup: [(u32, u8); 256],
 }
 
 impl HuffEncoder {
     // Encode file. Returns HuffEncoder (for later reuse) and encoded BitData
     pub fn encode_file(path: impl AsRef<Path>) -> io::Result<(Self, BitData)> {
         let start = Instant::now();
-
         let data: Vec<u8> = fs::read(path)?;
+
         crate::print_time("reading file", start);
         
         let encoder = HuffEncoder::from_vec(&data);
-        // let encoded = encoder.encode(&data);
-        let encoded = encoder.bitencode(&data);
-
+        let encoded = encoder.encode(&data);
         Ok((encoder, encoded))
     }
 
     // Create a HuffEncoder from data
     pub fn from_vec(data: &[u8]) -> Self {
         let start = Instant::now();
-
         let mut freqs = [0usize; 256];
         let mut queue = Queue::new();
 
@@ -45,7 +40,7 @@ impl HuffEncoder {
             freqs[byte as usize] += 1;
         }
         
-        let mut unique_bytes = 0;
+        let mut unique_bytes: u16 = 0;
 
         for (byte, &freq) in freqs.iter().enumerate() {
             if freq != 0 {
@@ -55,46 +50,23 @@ impl HuffEncoder {
         }
 
         let tree = queue.build_tree();
-        let lookup = Self::generate_lookup(&tree);
-        let bitlookup = Self::generate_bits(&tree);
+        let lookup = Self::get_codes(&tree);
 
         crate::print_time("parsing data", start);
-
-        Self { lookup, bitlookup, freqs, tree, unique_bytes }
+        Self { lookup, freqs, tree, unique_bytes }
     }
 
-    pub fn bitencode(&self, data: &[u8]) -> BitData {
+    pub fn encode(&self, data: &[u8]) -> BitData {
         let start = Instant::now();
         let mut encoded = BitData::new();
 
         for &byte in data {
-            let (code, len) = self.bitlookup[byte as usize];
-            encoded.bitwrite(code, len);
+            let (code, len) = self.lookup[byte as usize];
+            encoded.write(code, len);
         }
 
         crate::print_time("bit encoding data", start);
-
         encoded.flush();
-        encoded
-    }
-
-    // Encode data
-    pub fn encode(&self, data: &[u8]) -> BitData {
-        let start = Instant::now();
-
-        let mut encoded = BitData::new();
-
-
-        // Encoding via lookup here
-    
-        for raw_byte in data {
-            let code = self.lookup.get(raw_byte).expect("Broken tree! Missing key in lookup");
-            encoded.write(code);
-        }
-
-        encoded.flush();
-
-        crate::print_time("encoding data", start);
         encoded
     }
 
@@ -113,7 +85,7 @@ impl HuffEncoder {
         writer.write_all(&VERSION.to_be_bytes())?;
 
         // Number of (byte, freq) pairs
-        writer.write_all(&(self.unique_bytes as u16).to_be_bytes())?;
+        writer.write_all(&(self.unique_bytes).to_be_bytes())?;
 
         // Byte frequency pairs
         for (byte, &freq) in self.freqs.iter().enumerate() {
@@ -130,7 +102,7 @@ impl HuffEncoder {
     }
 
     // Generate codes
-    fn generate_bits(tree: &Box<Node>) -> [(u32, u8); 256] {
+    fn get_codes(tree: &Box<Node>) -> [(u32, u8); 256] {
         fn recurse(node: &Node, prefix: u32, depth: u8, codes: &mut [(u32, u8)]) {
             if let Some(char) = node.byte {
                 codes[char as usize] = (prefix, depth);
@@ -146,43 +118,12 @@ impl HuffEncoder {
             }
         }
 
-        let mut codes = [(0, 0); 256];
-        recurse(tree, 0u32, 0, &mut codes);
-        codes
-    }
-
-    fn generate_lookup(tree: &Box<Node>) -> HashMap<u8, Vec<bool>> {
-        // Helper generator function
-        fn resurse(node: &Node, prefix: &mut Vec<bool>, map: &mut HashMap<u8, Vec<bool>>) {
-            // Node is a leaf
-            if let Some(b) = node.byte {
-                map.insert(b, prefix.clone());
-                return;
-            }
-
-            // If left exists, recurse
-            if let Some(left_node) = &node.left {
-                // Run lookup_recurse with a temporarily modified vec (then backtrack -- drop the appendix)
-                prefix.push(false);
-                resurse(left_node, prefix, map);
-                prefix.pop();
-            }
-
-            // If right exists, recurse
-            if let Some(right_node) = &node.right {
-                prefix.push(true);
-                resurse(right_node, prefix, map);
-                prefix.pop();
-            }
-        }
-
         let start = Instant::now();
+        let mut codes = [(0, 0); 256];
 
-        let mut codes = HashMap::new();
-        let mut prefix_buffer = Vec::new();
-        resurse(tree, &mut prefix_buffer, &mut codes);   
+        recurse(tree, 0, 0, &mut codes);
 
-        crate::print_time("generating lookup", start);
+        crate::print_time("generating codes", start);
         codes
     }
 }
@@ -195,7 +136,6 @@ impl HuffDecoder {
     // Create a HuffDecoder from file headers and decode file
     pub fn decode_file(path: impl AsRef<Path>) -> io::Result<(Self, Vec<u8>)> {
         let start = Instant::now();
-
         let mut reader = BufReader::new(File::open(path)?);
 
         // 1. Validate "HUFF" header
@@ -245,15 +185,14 @@ impl HuffDecoder {
 
         crate::print_time("reading file", start);
 
-        let decoded = Self::decode_from_tree(&tree, &buffer, offset.into());
+        let decoded = Self::decode_with_tree(&tree, &buffer, offset.into());
 
         Ok((Self {tree}, decoded))
     }
 
     // Decode data based on tree tree (no reader)
-    pub fn decode_from_tree(tree: &Box<Node>, data: &[u8], offset: usize) -> Vec<u8> {
+    pub fn decode_with_tree(tree: &Box<Node>, data: &[u8], offset: usize) -> Vec<u8> {
         let start = Instant::now();
-
         let mut decoded: Vec<u8> = Vec::new();
         let mut head = tree;
         let stored_bits = 8 * (data.len() - 1) + offset;
@@ -291,12 +230,12 @@ impl HuffDecoder {
     }
 }
 
-impl fmt::Display for HuffEncoder {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.lookup.iter()
-            .try_for_each(|(byte, code)| {
-                let code: String = code.iter().map(|&b| if b {'1'} else {'0'}).collect();
-                writeln!(f, "'{}': {}", *byte as char, code)
-            })
-    }
-}
+// impl fmt::Display for HuffEncoder {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         self.lookup.iter()
+//             .try_for_each(|(byte, code)| {
+//                 let code: String = code.iter().map(|&b| if b {'1'} else {'0'}).collect();
+//                 writeln!(f, "'{}': {}", *byte as char, code)
+//             })
+//     }
+// }

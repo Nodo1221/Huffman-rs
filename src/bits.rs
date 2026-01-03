@@ -16,20 +16,7 @@ impl BitData {
         }
     }
 
-    pub fn write(&mut self, data: &[bool]) {
-        for &datum in data {
-            if self.capacity == 8 {
-                self.data.push(self.buffer);
-                self.capacity = 0;
-                self.buffer = 0;
-            }
-
-            self.buffer |= (datum as u8) << (7 - self.capacity);
-            self.capacity += 1;
-        }
-    }
-
-    pub fn bitwrite(&mut self, mut byte: u32, mut len: u8) {
+    pub fn write(&mut self, mut byte: u32, mut len: u8) {
         let first = (byte >> 32 - self.capacity) as u8;
 
         if len < self.capacity {

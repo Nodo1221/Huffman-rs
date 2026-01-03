@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::str::EncodeUtf16;
 use huffman::huffman::{HuffDecoder, HuffEncoder};
 
 use clap::{Parser, CommandFactory};
@@ -21,41 +20,40 @@ struct Args {
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     
-    if !args.decode {
-        // Read input from file or stdin
-        let (encoder, encoded) = match args.input {
-            Some(input) => HuffEncoder::encode_file(input)?,
-            None => {
-                if io::stdin().is_terminal() {
-                    Args::command().print_help().unwrap();
-                    // Args::parse_from(&["--help"]);
-                    std::process::exit(0);
-                }
-                
-                let mut buffer = Vec::new();
-                io::stdin().read_to_end(&mut buffer).expect("Failed to read from stdin");
-
-                let encoder = HuffEncoder::from_vec(&buffer);
-                // let encoded = encoder.encode(&buffer);
-                let encoded = encoder.bitencode(&buffer);
-
-                (encoder, encoded)
-            }
-        };
-
-        if let Some(output) = args.output {
-            encoder.write_file(output, &encoded)?;
-        }
-
-        else {
-            println!("{}", encoded);
-        }
+    if args.input.is_none() && io::stdin().is_terminal() {
+        Args::command().print_help().unwrap();
+        std::process::exit(0);
     }
 
-    else {
-        if let Some(input) = args.input {
-            let (decoder, decoded) = HuffDecoder::decode_file(input)?;
-            println!("decoded:\n{}", String::from_utf8_lossy(&decoded));
+    if args.decode {
+        let input = args.input.ok_or("Input file required for decoding")?;
+        let (_decoder, decoded) = HuffDecoder::decode_file(input)?;
+
+        match args.output {
+            Some(output) => println!("decoded:\n{}", String::from_utf8_lossy(&decoded)),
+            _ => println!("decoded:\n{}", String::from_utf8_lossy(&decoded)),
+        }
+
+        return Ok(());
+    }
+
+    let (encoder, encoded) = match args.input {
+        Some(input) => HuffEncoder::encode_file(input)?,
+        None => {
+            let mut buffer = Vec::new();
+            io::stdin().read_to_end(&mut buffer)?;
+            let encoder = HuffEncoder::from_vec(&buffer);
+            let encoded = encoder.encode(&buffer);
+
+            (encoder, encoded)
+        }
+    };
+
+    match args.output {
+        Some(output) => encoder.write_file(output, &encoded)?,
+        None => match encoded.data.len() {
+            100.. => eprintln!("Refusing to print more than 100 bytes"),
+            _ => println!("{}", encoded)
         }
     }
 

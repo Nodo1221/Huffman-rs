@@ -1,5 +1,6 @@
 use std::fmt;
 
+#[derive(Default)]
 pub struct BitData {
     pub data: Vec<u8>,
     pub capacity: u8,
@@ -7,14 +8,6 @@ pub struct BitData {
 }
 
 impl BitData {
-    pub fn new() -> Self {
-        Self {
-            data: Vec::new(),
-            capacity: 8,
-            buffer: 0,
-        }
-    }
-
     pub fn write(&mut self, mut byte: u32, mut len: u8) {
         let first = (byte >> 32 - self.capacity) as u8;
 

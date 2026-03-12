@@ -58,7 +58,7 @@ impl HuffEncoder {
 
     pub fn encode(&self, data: &[u8]) -> BitData {
         let start = Instant::now();
-        let mut encoded = BitData::new();
+        let mut encoded = BitData::default();
 
         for &byte in data {
             let (code, len) = self.lookup[byte as usize];

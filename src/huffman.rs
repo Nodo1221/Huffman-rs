@@ -102,7 +102,7 @@ impl HuffEncoder {
     }
 
     // Generate codes
-    fn get_codes(tree: &Box<Node>) -> [(u32, u8); 256] {
+    fn get_codes(tree: &Node) -> [(u32, u8); 256] {
         fn recurse(node: &Node, prefix: u32, depth: u8, codes: &mut [(u32, u8)]) {
             if let Some(char) = node.byte {
                 codes[char as usize] = (prefix, depth);
@@ -192,7 +192,7 @@ impl HuffDecoder {
     }
 
     // Decode data based on tree tree (no reader)
-    pub fn decode_with_tree(tree: &Box<Node>, data: &[u8], offset: usize) -> Vec<u8> {
+    pub fn decode_with_tree(tree: &Node, data: &[u8], offset: usize) -> Vec<u8> {
         let start = Instant::now();
         let mut decoded: Vec<u8> = Vec::new();
         let mut head = tree;

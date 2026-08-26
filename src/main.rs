@@ -31,8 +31,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let (_decoder, decoded) = HuffDecoder::decode_file(input)?;
 
         match args.output {
-            Some(output) => println!("decoded:\n{}", String::from_utf8_lossy(&decoded)),
-            _ => println!("decoded:\n{}", String::from_utf8_lossy(&decoded)),
+            Some(_) => println!("decoded:\n{}", String::from_utf8_lossy(&decoded)),
+            None => println!("decoded:\n{}", String::from_utf8_lossy(&decoded)),
         }
 
         return Ok(());

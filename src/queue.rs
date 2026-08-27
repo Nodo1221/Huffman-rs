@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 pub struct Node {
     pub left: Option<Box<Node>>,
     pub right: Option<Box<Node>>,
@@ -84,9 +82,8 @@ impl Queue {
         self.heapify_up(self.heap.len() - 1)
     }
 
+    #[hotpath::measure]
     pub fn build_tree(mut self) -> Box<Node> {
-        let start = Instant::now();
-
         while self.heap.len() > 1 {
             let left = self.pop_min();
             let right = self.pop_min();
@@ -102,7 +99,6 @@ impl Queue {
             self.add(combined);
         }
 
-        crate::print_time("building tree from queue", start);
         self.pop_min()
     }
 }

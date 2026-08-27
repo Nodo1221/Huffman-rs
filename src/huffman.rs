@@ -1,5 +1,5 @@
-use std::time::Instant;
 use std::fmt;
+use std::time::Instant;
 
 use std::path::Path;
 use std::fs::{self, File};
@@ -19,20 +19,27 @@ pub struct HuffEncoder {
 
 impl HuffEncoder {
     // Encode file. Returns HuffEncoder (for later reuse) and encoded BitData
+    #[hotpath::measure]
     pub fn encode_file(path: impl AsRef<Path>) -> io::Result<(Self, BitData)> {
         let start = Instant::now();
-        let data: Vec<u8> = fs::read(path)?;
-
-        crate::print_time("reading file", start);
+        let data: Vec<u8> = Self::read_input_file(&path)?;
+        let input_len = data.len();
         
         let encoder = HuffEncoder::from_vec(&data);
         let encoded = encoder.encode(&data);
+
+        crate::print_throughput("encoding throughput", input_len, start.elapsed());
         Ok((encoder, encoded))
     }
 
+    #[hotpath::measure]
+    fn read_input_file(path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
+        fs::read(path)
+    }
+
     // Create a HuffEncoder from data
+    #[hotpath::measure]
     pub fn from_vec(data: &[u8]) -> Self {
-        let start = Instant::now();
         let mut freqs = [0usize; 256];
         let mut queue = Queue::new();
 
@@ -52,12 +59,11 @@ impl HuffEncoder {
         let tree = queue.build_tree();
         let lookup = Self::get_codes(&tree);
 
-        crate::print_time("parsing data", start);
         Self { lookup, freqs, tree, unique_bytes }
     }
 
+    #[hotpath::measure]
     pub fn encode(&self, data: &[u8]) -> BitData {
-        let start = Instant::now();
         let mut encoded = BitData::default();
 
         for &byte in data {
@@ -65,7 +71,6 @@ impl HuffEncoder {
             encoded.write(code, len);
         }
 
-        crate::print_time("bit encoding data", start);
         encoded.flush();
         encoded
     }
@@ -102,6 +107,7 @@ impl HuffEncoder {
     }
 
     // Generate codes
+    #[hotpath::measure]
     fn get_codes(tree: &Node) -> [(u32, u8); 256] {
         fn recurse(node: &Node, prefix: u32, depth: u8, codes: &mut [(u32, u8)]) {
             if let Some(char) = node.byte {
@@ -118,12 +124,10 @@ impl HuffEncoder {
             }
         }
 
-        let start = Instant::now();
         let mut codes = [(0, 0); 256];
 
         recurse(tree, 0, 0, &mut codes);
 
-        crate::print_time("generating codes", start);
         codes
     }
 }
@@ -134,6 +138,7 @@ pub struct HuffDecoder {
 
 impl HuffDecoder {
     // Create a HuffDecoder from file headers and decode file
+    #[hotpath::measure]
     pub fn decode_file(path: impl AsRef<Path>) -> io::Result<(Self, Vec<u8>)> {
         let start = Instant::now();
         let mut reader = BufReader::new(File::open(path)?);
@@ -177,23 +182,19 @@ impl HuffDecoder {
         let tree = queue.build_tree();
 
         println!("read offset: {}", offset);
-        crate::print_time("parsing headers", start);
-
-        let start = Instant::now();
 
         let mut buffer = Vec::new();
         reader.read_to_end(&mut buffer)?;
 
-        crate::print_time("reading file", start);
-
         let decoded = Self::decode_with_tree(&tree, &buffer, offset.into());
 
+        crate::print_throughput("decoding throughput", decoded.len(), start.elapsed());
         Ok((Self {tree}, decoded))
     }
 
     // Decode data based on tree tree (no reader)
+    #[hotpath::measure]
     pub fn decode_with_tree(tree: &Node, data: &[u8], offset: usize) -> Vec<u8> {
-        let start = Instant::now();
         let mut decoded: Vec<u8> = Vec::new();
         let mut head = tree;
         let stored_bits = 8 * (data.len() - 1) + offset;
@@ -226,7 +227,6 @@ impl HuffDecoder {
             }
         }
         
-        crate::print_time("decoding from tree", start);
         decoded
     }
 }

@@ -17,6 +17,7 @@ struct Args {
     decode: bool,
 }
 
+#[hotpath::main]
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     

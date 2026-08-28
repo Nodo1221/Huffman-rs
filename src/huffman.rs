@@ -1,9 +1,9 @@
 use std::fmt;
 use std::time::Instant;
 
-use std::path::Path;
 use std::fs::{self, File};
-use std::io::{self, Read, Write, BufReader, BufWriter};
+use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::path::Path;
 
 use crate::bits::BitData;
 use crate::queue::{Node, Queue};
@@ -24,7 +24,7 @@ impl HuffEncoder {
         let start = Instant::now();
         let data: Vec<u8> = Self::read_input_file(&path)?;
         let input_len = data.len();
-        
+
         let encoder = HuffEncoder::from_vec(&data);
         let encoded = encoder.encode(&data);
 
@@ -46,7 +46,7 @@ impl HuffEncoder {
         for &byte in data {
             freqs[byte as usize] += 1;
         }
-        
+
         let mut unique_bytes: u16 = 0;
 
         for (byte, &freq) in freqs.iter().enumerate() {
@@ -96,10 +96,10 @@ impl HuffEncoder {
         for (byte, &freq) in self.freqs.iter().enumerate() {
             if freq != 0 {
                 writer.write_all(&(byte as u8).to_be_bytes())?;
-                writer.write_all(&(freq as u32).to_be_bytes())?;   
+                writer.write_all(&(freq as u32).to_be_bytes())?;
             }
         }
-        
+
         // Write data
         writer.write_all(&encoded.data)?;
 
@@ -153,7 +153,7 @@ impl HuffDecoder {
         // 2. Read Offset
         let mut offset_buf = [0u8; 1];
         reader.read_exact(&mut offset_buf)?;
-        let offset = offset_buf[0]; 
+        let offset = offset_buf[0];
 
         // 3. Read Version (Assuming u8/1 byte based on your writer)
         let mut version_buf = [0u8; 1];
@@ -189,7 +189,7 @@ impl HuffDecoder {
         let decoded = Self::decode_with_tree(&tree, &buffer, offset.into());
 
         crate::print_throughput("decoding throughput", decoded.len(), start.elapsed());
-        Ok((Self {tree}, decoded))
+        Ok((Self { tree }, decoded))
     }
 
     // Decode data based on tree tree (no reader)
@@ -226,7 +226,7 @@ impl HuffDecoder {
                 }
             }
         }
-        
+
         decoded
     }
 }

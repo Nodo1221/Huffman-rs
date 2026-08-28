@@ -23,14 +23,10 @@ impl BitData {
     pub fn write(&mut self, mut byte: u32, mut len: u8) -> bool {
         let b = Block::BITS as u8;
 
-        // Calculate required array slots upfront to prevent partial writes
-        let blocks_needed = if len < self.capacity {
-            0
-        } else {
-            1 + ((len - self.capacity) / b) as usize
-        };
-
-        if self.index + blocks_needed > PAGE_SIZE {
+        // Worst-case space check for a 32-bit write,
+        // reserving at least 1 slot for a future flush().
+        let max_blocks = 32 / Block::BITS as usize;
+        if self.index + max_blocks >= PAGE_SIZE {
             return false;
         }
 
@@ -63,14 +59,10 @@ impl BitData {
         true
     }
 
-    pub fn flush(&mut self) -> bool {
-        if self.index >= PAGE_SIZE {
-            return false;
-        }
+    pub fn flush(&mut self) {
         self.data[self.index] = self.buffer;
         self.index += 1;
         self.buffer = 0;
-        true
     }
 }
 

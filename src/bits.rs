@@ -1,22 +1,25 @@
 use std::fmt;
 
+pub type Block = u8;
+
 pub struct BitData {
-    pub data: Vec<u8>,
+    pub data: Vec<Block>,
     pub capacity: u8,
-    buffer: u8,
+    buffer: Block,
 }
 
 impl BitData {
     pub fn new() -> Self {
         Self {
             data: Vec::new(),
-            capacity: 8,
+            capacity: Block::BITS as u8,
             buffer: 0,
         }
     }
 
     pub fn write(&mut self, mut byte: u32, mut len: u8) {
-        let first = (byte >> 32 - self.capacity) as u8;
+        let b = Block::BITS as u8;
+        let first = (byte >> (32 - self.capacity)) as Block;
 
         if len < self.capacity {
             self.buffer |= first;
@@ -29,16 +32,16 @@ impl BitData {
         byte <<= self.capacity;
         len -= self.capacity;
 
-        let octets = len / 8;
+        let chunks = len / b;
 
-        for i in 0..octets {
-            let current: u8 = (byte >> (24 - i * 8)) as u8;
+        for i in 0..chunks {
+            let current = (byte >> (32 - b - i * b)) as Block;
             self.data.push(current);
         }
 
-        let last = (byte >> (24 - octets * 8)) as u8;
+        let last = (byte >> (32 - b - chunks * b)) as Block;
         self.buffer = last;
-        self.capacity = 8 - (len - 8 * octets);
+        self.capacity = b - (len - b * chunks);
     }
 
     pub fn flush(&mut self) {
@@ -49,8 +52,9 @@ impl BitData {
 
 impl fmt::Display for BitData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let width = Block::BITS as usize;
         for datum in &self.data {
-            writeln!(f, "{:08b}", datum)?;
+            writeln!(f, "{:0width$b}", datum, width = width)?;
         }
         write!(f, "current capacity: {}", self.capacity)
     }

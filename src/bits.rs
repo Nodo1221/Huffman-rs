@@ -62,9 +62,11 @@ impl BitData {
     }
 
     pub fn flush(&mut self) {
+        // Unconditionally push the last byte to maintain the bit offset structure
         self.data[self.size] = self.buffer;
         self.size += 1;
         self.buffer = 0;
+        self.capacity = Block::BITS as u8;
     }
 }
 

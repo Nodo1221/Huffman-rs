@@ -5,7 +5,7 @@ use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::Path;
 
-use crate::bits::BitData;
+use crate::bits::{BitData, PageFull};
 use crate::queue::{Node, Queue};
 
 const VERSION: u8 = 1;
@@ -20,16 +20,20 @@ pub struct HuffEncoder {
 impl HuffEncoder {
     // Encode file. Returns HuffEncoder (for later reuse) and encoded BitData
     #[hotpath::measure]
-    pub fn encode_file(path: impl AsRef<Path>) -> io::Result<(Self, BitData)> {
+    pub fn encode_file(path: impl AsRef<Path>) -> io::Result<(Self, Vec<u8>)> {
         let start = Instant::now();
         let data: Vec<u8> = Self::read_input_file(&path)?;
         let input_len = data.len();
 
         let encoder = HuffEncoder::from_vec(&data);
-        let encoded = encoder.encode(&data);
+
+        // Vec<u8> implements Write, so it acts as our destination buffer
+        let mut encoded_bytes = Vec::with_capacity(input_len);
+        encoder.encode(&data, &mut encoded_bytes);
 
         crate::print_throughput("encoding throughput", input_len, start.elapsed());
-        Ok((encoder, encoded))
+
+        Ok((encoder, encoded_bytes))
     }
 
     #[hotpath::measure]
@@ -59,20 +63,29 @@ impl HuffEncoder {
         let tree = queue.build_tree();
         let lookup = Self::get_codes(&tree);
 
-        Self { lookup, freqs, tree, unique_bytes }
+        Self {
+            lookup,
+            freqs,
+            tree,
+            unique_bytes,
+        }
     }
 
     #[hotpath::measure]
-    pub fn encode(&self, data: &[u8]) -> BitData {
+    pub fn encode(&self, data: &[u8], writer: &mut impl Write) {
         let mut encoded = BitData::new();
 
         for &byte in data {
             let (code, len) = self.lookup[byte as usize];
-            encoded.write(code, len);
+
+            while let PageFull(true) = encoded.write(code, len) {
+                writer.write_all(&encoded.data[..encoded.size]).unwrap();
+                encoded.size = 0;
+            }
         }
 
         encoded.flush();
-        encoded
+        writer.write_all(&encoded.data[..encoded.size]).unwrap();
     }
 
     // Write encoded to output
@@ -147,7 +160,10 @@ impl HuffDecoder {
         let mut header = [0u8; 4];
         reader.read_exact(&mut header)?;
         if &header != b"HUFF" {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid HUFF header"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid HUFF header",
+            ));
         }
 
         // 2. Read Offset
@@ -213,9 +229,7 @@ impl HuffDecoder {
                     decoded.push(*byte);
                     head = tree;
                 }
-            }
-
-            else {
+            } else {
                 // Decoding 0, move head to right Node
                 head = head.left.as_ref().unwrap();
 
@@ -235,7 +249,13 @@ impl fmt::Display for HuffEncoder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (index, &(code, len)) in self.lookup.iter().enumerate() {
             if len != 0 {
-                writeln!(f, "'{}' {:0n$b}", index as u8 as char, code >> (32 - len), n = len as usize)?;
+                writeln!(
+                    f,
+                    "'{}' {:0n$b}",
+                    index as u8 as char,
+                    code >> (32 - len),
+                    n = len as usize
+                )?;
             }
         }
         Ok(())

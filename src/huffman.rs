@@ -64,7 +64,7 @@ impl HuffEncoder {
 
     #[hotpath::measure]
     pub fn encode(&self, data: &[u8]) -> BitData {
-        let mut encoded = BitData::default();
+        let mut encoded = BitData::new();
 
         for &byte in data {
             let (code, len) = self.lookup[byte as usize];

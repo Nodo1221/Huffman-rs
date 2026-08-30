@@ -9,7 +9,7 @@ use crate::bits::{BitData, Block};
 use crate::queue::{Node, Queue};
 
 const VERSION: u8 = 1;
-const PAGE_SIZE: usize = 1024;
+const PAGE_SIZE: usize = 128 * 1024;
 
 pub struct HuffEncoder {
     tree: Box<Node>,
@@ -89,7 +89,10 @@ impl HuffEncoder {
 
         chunk.flush();
         writer.write_all(&offset.to_be_bytes())?;
-        writer.write_all(&chunk.data[..chunk.index])?;
+        // writer.write_all(&chunk.data[..chunk.index])?;
+        for block in &chunk.data[..chunk.index] {
+            writer.write_all(&block.to_be_bytes())?;
+        }
 
         Ok(())
     }
@@ -118,8 +121,9 @@ impl HuffEncoder {
 
     // Sequential demo encode all
     pub fn encode_all(&self, data: &[u8], writer: &mut impl Write) -> io::Result<()> {
+        let mut encoded = Box::new(BitData::new());
         for chunk in data.chunks(PAGE_SIZE) {
-            let mut encoded = BitData::new();
+            encoded.reset();
             for &byte in chunk {
                 let (code, len) = self.lookup[byte as usize];
                 encoded.write(code, len);

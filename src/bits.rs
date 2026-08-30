@@ -1,7 +1,7 @@
 use std::fmt;
 
-pub type Block = u8;
-pub const PAGE_SIZE: usize = 1024 * 2;
+pub type Block = u64;
+pub const PAGE_SIZE: usize = (128.0 * 1024.0 * 1.5) as usize;
 
 pub struct BitData {
     pub data: [Block; PAGE_SIZE],
@@ -49,6 +49,10 @@ impl BitData {
             self.buffer = 0;
             self.capacity = Block::BITS as u8;
         }
+    }
+
+    pub fn reset(&mut self) {
+        (self.index, self.buffer, self.capacity) = (0, 0, 0);
     }
 }
 

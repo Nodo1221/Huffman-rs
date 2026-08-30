@@ -4,6 +4,7 @@ use huffman::huffman::{HuffDecoder, HuffEncoder};
 use clap::{Parser, CommandFactory};
 use std::fs::File;
 use std::io::{self, BufWriter, Read, IsTerminal, Write};
+use std::time::Instant;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -46,18 +47,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let encoder = HuffEncoder::from_vec(&data);
+    let input_len = data.len();
 
     match args.output {
         Some(output) => {
             let file = File::create(output)?;
             let mut writer = BufWriter::new(file);
             encoder.write_header(&mut writer)?;
+            let start = Instant::now();
             encoder.encode_all(&data, &mut writer)?;
+            huffman::print_throughput("encoding throughput", input_len, start.elapsed());
         }
         None => {
             let mut buffer: Vec<u8> = Vec::new();
             encoder.write_header(&mut buffer)?;
+            let start = Instant::now();
             encoder.encode_all(&data, &mut buffer)?;
+            huffman::print_throughput("encoding throughput", input_len, start.elapsed());
             match buffer.len() {
                 100.. => eprintln!("Refusing to print more than 100 bytes"),
                 _ => println!("{encoder}\n{buffer:?}"),

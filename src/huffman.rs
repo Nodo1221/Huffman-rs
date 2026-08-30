@@ -5,10 +5,11 @@ use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::Path;
 
-use crate::bits::{BitData, PageFull};
+use crate::bits::{BitData, Block};
 use crate::queue::{Node, Queue};
 
 const VERSION: u8 = 1;
+const PAGE_SIZE: usize = 1024;
 
 pub struct HuffEncoder {
     tree: Box<Node>,
@@ -19,22 +20,22 @@ pub struct HuffEncoder {
 
 impl HuffEncoder {
     // Encode file. Returns HuffEncoder (for later reuse) and encoded BitData
-    #[hotpath::measure]
-    pub fn encode_file(path: impl AsRef<Path>) -> io::Result<(Self, Vec<u8>)> {
-        let start = Instant::now();
-        let data: Vec<u8> = Self::read_input_file(&path)?;
-        let input_len = data.len();
+    // #[hotpath::measure]
+    // pub fn encode_file(path: impl AsRef<Path>) -> io::Result<(Self, Vec<u8>)> {
+    //     let start = Instant::now();
+    //     let data: Vec<u8> = Self::read_input_file(&path)?;
+    //     let input_len = data.len();
 
-        let encoder = HuffEncoder::from_vec(&data);
+    //     let encoder = HuffEncoder::from_vec(&data);
 
-        // Vec<u8> implements Write, so it acts as our destination buffer
-        let mut encoded_bytes = Vec::with_capacity(input_len);
-        encoder.encode(&data, &mut encoded_bytes);
+    //     // Vec<u8> implements Write, so it acts as our destination buffer
+    //     let mut encoded_bytes = Vec::with_capacity(input_len);
+    //     encoder.encode(&data, &mut encoded_bytes);
 
-        crate::print_throughput("encoding throughput", input_len, start.elapsed());
+    //     crate::print_throughput("encoding throughput", input_len, start.elapsed());
 
-        Ok((encoder, encoded_bytes))
-    }
+    //     Ok((encoder, encoded_bytes))
+    // }
 
     #[hotpath::measure]
     fn read_input_file(path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
@@ -71,39 +72,38 @@ impl HuffEncoder {
         }
     }
 
-    #[hotpath::measure]
-    pub fn encode(&self, data: &[u8], writer: &mut impl Write) {
-        let mut encoded = BitData::new();
+    // #[hotpath::measure]
+    // pub fn encode(&self, data: &[u8], writer: &mut impl Write) {
+    //     let mut encoded = BitData::new();
+    //     for &byte in data {
+    //         let (code, len) = self.lookup[byte as usize];
+    //         encoded.write(code, len);
+    //     }
+    //     encoded.flush();
+    //     writer.write_all(&encoded.data[..encoded.index]).unwrap();
+    // }
 
-        for &byte in data {
-            let (code, len) = self.lookup[byte as usize];
+    // Write a chunk to writer. Precede each with offset (used bits in the last Block)
+    pub fn write_chunk(writer: &mut impl Write, chunk: &mut BitData) -> io::Result<()> {
+        let offset = chunk.capacity;
 
-            while let PageFull(true) = encoded.write(code, len) {
-                writer.write_all(&encoded.data[..encoded.size]).unwrap();
-                encoded.size = 0;
-            }
-        }
+        chunk.flush();
+        writer.write_all(&offset.to_be_bytes())?;
+        writer.write_all(&chunk.data[..chunk.index])?;
 
-        encoded.flush();
-        writer.write_all(&encoded.data[..encoded.size]).unwrap();
+        Ok(())
     }
 
-    // Write encoded to output
-    pub fn write_file(&self, output: impl AsRef<Path>, encoded: &BitData) -> io::Result<()> {
-        let file = File::create(output)?;
-        let mut writer = BufWriter::new(file);
-
-        // HUFF header
+    // Write header to writer
+    pub fn write_header(&self, writer: &mut impl Write) -> io::Result<()> {
+        // HUFF magic
         writer.write_all(b"HUFF")?;
-
-        // Offset
-        writer.write_all(&(8 - encoded.capacity as u8).to_be_bytes())?;
 
         // Version number
         writer.write_all(&VERSION.to_be_bytes())?;
 
         // Number of (byte, freq) pairs
-        writer.write_all(&(self.unique_bytes).to_be_bytes())?;
+        writer.write_all(&self.unique_bytes.to_be_bytes())?;
 
         // Byte frequency pairs
         for (byte, &freq) in self.freqs.iter().enumerate() {
@@ -113,9 +113,19 @@ impl HuffEncoder {
             }
         }
 
-        // Write data
-        writer.write_all(&encoded.data)?;
+        Ok(())
+    }
 
+    // Sequential demo encode all
+    pub fn encode_all(&self, data: &[u8], writer: &mut impl Write) -> io::Result<()> {
+        for chunk in data.chunks(PAGE_SIZE) {
+            let mut encoded = BitData::new();
+            for &byte in chunk {
+                let (code, len) = self.lookup[byte as usize];
+                encoded.write(code, len);
+            }
+            Self::write_chunk(writer, &mut encoded)?;
+        }
         Ok(())
     }
 

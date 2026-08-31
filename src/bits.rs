@@ -1,6 +1,6 @@
 use std::fmt;
 
-pub const PAGE_SIZE: usize = (128.0 * 1024.0 * 1.5) as usize;
+pub const PAGE_SIZE: usize = (128.0 * 1024.0 * 1.5 / u64::BITS as f32) as usize;
 
 pub struct BitData {
     pub data: [u64; PAGE_SIZE],
@@ -63,8 +63,13 @@ impl fmt::Display for BitData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let width = u64::BITS as usize;
         for i in 0..self.index {
-            writeln!(f, "{:0width$b}", self.data[i], width = width)?;
+            writeln!(f, "{:0width$b}", self.data[i])?;
         }
-        write!(f, "current capacity: {}", self.capacity)
+        if self.capacity != u64::BITS as u8 {
+            let width = (u64::BITS as u8 - self.capacity) as usize;
+            writeln!(f, "{:0width$b}", self.buffer >> self.capacity)?;
+            write!(f, "(partial, {width} bits)")?;
+        }
+        Ok(())
     }
 }

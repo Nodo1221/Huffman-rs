@@ -9,7 +9,7 @@ use crate::bits::{BitData};
 use crate::queue::{Node, Queue};
 
 const VERSION: u8 = 1;
-const PAGE_SIZE: usize = 128 * 1024;
+const PAGE_SIZE: usize = (128.0 * 1024.0 / u64::BITS as f32) as usize;
 
 pub struct HuffEncoder {
     tree: Box<Node>,
@@ -21,7 +21,7 @@ pub struct HuffEncoder {
 impl HuffEncoder {
     // Create a HuffEncoder from data
     #[hotpath::measure]
-    pub fn from_vec(data: &[u8]) -> Self {
+    pub fn from_data(data: &[u8]) -> Self {
         let mut freqs = [0usize; 256];
         let mut queue = Queue::new();
 
@@ -48,14 +48,51 @@ impl HuffEncoder {
             unique_bytes,
         }
     }
+    
+    // Encode a single chunk (without flushing!)
+    pub fn encode_chunk(&self, data: &[u8]) -> BitData {
+        let mut encoded = BitData::new();
+        for &byte in data {
+            let (code, len) = self.lookup[byte as usize];
+            encoded.write(code, len);
+        }
+        encoded
+    }
 
-    // Write a chunk to writer. Precede each with offset (used bits in the last Block)
+    // Sequential demo encode all
+    fn read_chunk<'a>(reader: &mut impl Read, buf: &'a mut [u8]) -> io::Result<&'a [u8]> {
+        let mut total = 0;
+        while total < buf.len() {
+            match reader.read(&mut buf[total..])? {
+                0 => break,
+                n => total += n,
+            }
+        }
+        Ok(&buf[..total])
+    }
+
+    pub fn encode_all(&self, reader: &mut impl Read, writer: &mut impl Write) -> io::Result<u8> {
+        let mut buffer = [0u8; PAGE_SIZE];
+        let mut last_offset = 0;
+
+        loop {
+            let chunk = Self::read_chunk(reader, &mut buffer)?;
+            if chunk.is_empty() { break; }
+            let mut encoded = self.encode_chunk(chunk);
+            last_offset = encoded.capacity;
+            Self::write_chunk(writer, &mut encoded)?;
+        }
+
+        Ok(last_offset)
+    }
+
+    // Write a chunk to writer. Precede each with offset (number of written u64's)
     pub fn write_chunk(writer: &mut impl Write, chunk: &mut BitData) -> io::Result<()> {
         let offset = chunk.capacity;
 
         chunk.flush();
         writer.write_all(&offset.to_be_bytes())?;
-        // writer.write_all(&chunk.data[..chunk.index])?;
+        writer.write_all(&(chunk.index as u16).to_be_bytes())?;
         for block in &chunk.data[..chunk.index] {
             writer.write_all(&block.to_be_bytes())?;
         }
@@ -82,20 +119,6 @@ impl HuffEncoder {
             }
         }
 
-        Ok(())
-    }
-
-    // Sequential demo encode all
-    pub fn encode_all(&self, data: &[u8], writer: &mut impl Write) -> io::Result<()> {
-        let mut encoded = Box::new(BitData::new());
-        for chunk in data.chunks(PAGE_SIZE) {
-            encoded.reset();
-            for &byte in chunk {
-                let (code, len) = self.lookup[byte as usize];
-                encoded.write(code, len);
-            }
-            Self::write_chunk(writer, &mut encoded)?;
-        }
         Ok(())
     }
 

@@ -3,7 +3,7 @@ use huffman::huffman::{HuffDecoder, HuffEncoder};
 
 use clap::{Parser, CommandFactory};
 use std::fs::File;
-use std::io::{self, BufWriter, Read, IsTerminal};
+use std::io::{self, BufWriter, Read, Write, IsTerminal};
 use std::time::Instant;
 use std::path::PathBuf;
 
@@ -28,7 +28,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         std::process::exit(0);
     }
 
-    // Decode
     if args.decode {
         let input = args.input.ok_or("Input file required for decoding")?;
         let (_decoder, decoded) = HuffDecoder::decode_file(input)?;
@@ -36,38 +35,26 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    // Encode
-    let data = match args.input {
-        Some(input) => std::fs::read(input)?,
-        None => {
-            let mut buffer = Vec::new();
-            io::stdin().read_to_end(&mut buffer)?;
-            buffer
-        }
+    let mut in_file: Box<dyn Read> = match args.input {
+        Some(ref path) => Box::new(File::open(path)?),
+        None => Box::new(io::stdin()),
     };
 
-    let encoder = HuffEncoder::from_vec(&data);
-    let input_len = data.len();
+    let mut buf = Vec::new();
+    in_file.read_to_end(&mut buf)?;
+
+    let encoder = HuffEncoder::from_data(&buf);
 
     match args.output {
-        Some(output) => {
-            let file = File::create(output)?;
-            let mut writer = BufWriter::new(file);
-            encoder.write_header(&mut writer)?;
-            let start = Instant::now();
-            encoder.encode_all(&data, &mut writer)?;
-            huffman::print_throughput("encoding throughput", input_len, start.elapsed());
+        Some(path) => {
+            let mut out_file = File::create(path)?;
+            encoder.write_header(&mut out_file)?;
+            encoder.encode_all(&mut io::Cursor::new(&buf), &mut out_file)?;
         }
         None => {
-            let mut buffer: Vec<u8> = Vec::new();
-            encoder.write_header(&mut buffer)?;
-            let start = Instant::now();
-            encoder.encode_all(&data, &mut buffer)?;
-            huffman::print_throughput("encoding throughput", input_len, start.elapsed());
-            match buffer.len() {
-                100.. => eprintln!("Refusing to print more than 100 bytes"),
-                _ => println!("{encoder}\n{buffer:?}"),
-            }
+            println!("{}", encoder);
+            let encoded = encoder.encode_chunk(&buf);
+            println!("{}", encoded);
         }
     }
 

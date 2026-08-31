@@ -3,7 +3,7 @@ use huffman::huffman::{HuffDecoder, HuffEncoder};
 
 use clap::{Parser, CommandFactory};
 use std::fs::File;
-use std::io::{self, BufWriter, Read, IsTerminal, Write};
+use std::io::{self, BufWriter, Read, IsTerminal};
 use std::time::Instant;
 use std::path::PathBuf;
 

@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{self, BufReader, Read, Write};
 use std::path::Path;
 
-use crate::bits::{BitData, Block};
+use crate::bits::{BitData};
 use crate::queue::{Node, Queue};
 
 const VERSION: u8 = 1;

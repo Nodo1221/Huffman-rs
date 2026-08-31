@@ -1,13 +1,12 @@
 use std::fmt;
 
-pub type Block = u64;
 pub const PAGE_SIZE: usize = (128.0 * 1024.0 * 1.5) as usize;
 
 pub struct BitData {
-    pub data: [Block; PAGE_SIZE],
+    pub data: [u64; PAGE_SIZE],
     pub index: usize,
     pub capacity: u8,
-    buffer: Block,
+    buffer: u64,
 }
 
 impl BitData {
@@ -15,50 +14,54 @@ impl BitData {
         Self {
             data: [0; PAGE_SIZE],
             index: 0,
-            capacity: Block::BITS as u8,
+            capacity: u64::BITS as u8,
             buffer: 0,
         }
     }
 
-    pub fn write(&mut self, mut byte: u32, mut len: u8) {
-        let b = Block::BITS as u8;
-        debug_assert!(self.index + if len < self.capacity { 0 } else { 1 + ((len - self.capacity) / b) as usize } <= PAGE_SIZE);
-        let first = (byte >> (32 - self.capacity)) as Block;
+    // Write a type agnostic code (u8, u16, u32) to buffer
+    pub fn write<T: Into<u64>>(&mut self, code: T, mut len: u8) {
+        let block_size = u64::BITS as u8;
+        let input_bits = (std::mem::size_of::<T>() * 8) as u32;
+
+        let mut word = code.into() << (u64::BITS - input_bits);
+        let first = word >> (block_size - self.capacity);
+
         if len < self.capacity {
             self.buffer |= first;
             self.capacity -= len;
             return;
         }
+
         self.data[self.index] = self.buffer | first;
         self.index += 1;
-        byte <<= self.capacity;
+
+        word <<= self.capacity;
         len -= self.capacity;
-        let chunks = len / b;
-        for i in 0..chunks {
-            self.data[self.index] = (byte >> (32 - b - i * b)) as Block;
-            self.index += 1;
-        }
-        self.buffer = (byte >> (32 - b - chunks * b)) as Block;
-        self.capacity = b - (len - b * chunks);
+
+        self.buffer = word;
+        self.capacity = block_size - len;
     }
 
     pub fn flush(&mut self) {
-        if self.capacity != Block::BITS as u8 {
+        if self.capacity != u64::BITS as u8 {
             self.data[self.index] = self.buffer;
             self.index += 1;
             self.buffer = 0;
-            self.capacity = Block::BITS as u8;
+            self.capacity = u64::BITS as u8;
         }
     }
 
     pub fn reset(&mut self) {
-        (self.index, self.buffer, self.capacity) = (0, 0, 0);
+        self.index = 0;
+        self.buffer = 0;
+        self.capacity = u64::BITS as u8;
     }
 }
 
 impl fmt::Display for BitData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let width = Block::BITS as usize;
+        let width = u64::BITS as usize;
         for i in 0..self.index {
             writeln!(f, "{:0width$b}", self.data[i], width = width)?;
         }

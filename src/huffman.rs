@@ -50,13 +50,12 @@ impl HuffEncoder {
     }
     
     // Encode a single chunk (without flushing!)
-    pub fn encode_chunk(&self, data: &[u8]) -> BitData {
-        let mut encoded = BitData::new();
+    pub fn encode_chunk(&self, data: &[u8], out: &mut BitData) {
+        out.reset();
         for &byte in data {
             let (code, len) = self.lookup[byte as usize];
-            encoded.write(code, len);
+            out.write(code, len);
         }
-        encoded
     }
 
     // Sequential demo encode all
@@ -71,19 +70,18 @@ impl HuffEncoder {
         Ok(&buf[..total])
     }
 
-    pub fn encode_all(&self, reader: &mut impl Read, writer: &mut impl Write) -> io::Result<u8> {
-        let mut buffer = [0u8; PAGE_SIZE];
-        let mut last_offset = 0;
+    pub fn encode_all(&self, reader: &mut impl Read, writer: &mut impl Write) -> io::Result<()> {
+        let mut in_buf = [0u8; PAGE_SIZE];
+        let mut out_buf = BitData::new();
 
         loop {
-            let chunk = Self::read_chunk(reader, &mut buffer)?;
+            let chunk = Self::read_chunk(reader, &mut in_buf)?;
             if chunk.is_empty() { break; }
-            let mut encoded = self.encode_chunk(chunk);
-            last_offset = encoded.capacity;
-            Self::write_chunk(writer, &mut encoded)?;
+            self.encode_chunk(chunk, &mut out_buf);
+            Self::write_chunk(writer, &mut out_buf)?;
         }
 
-        Ok(last_offset)
+        Ok(())
     }
 
     // Write a chunk to writer. Precede each with offset (number of written u64's)

@@ -3,7 +3,7 @@ use huffman::huffman::{HuffDecoder, HuffEncoder};
 
 use clap::{Parser, CommandFactory};
 use std::fs::File;
-use std::io::{self, BufWriter, Read, Write, IsTerminal};
+use std::io::{self, Read, Write, IsTerminal};
 use std::time::Instant;
 use std::path::PathBuf;
 
@@ -35,6 +35,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
+    let start = Instant::now();
+
     let mut in_file: Box<dyn Read> = match args.input {
         Some(ref path) => Box::new(File::open(path)?),
         None => Box::new(io::stdin()),
@@ -42,6 +44,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut buf = Vec::new();
     in_file.read_to_end(&mut buf)?;
+    let input_len = buf.len();
 
     let encoder = HuffEncoder::from_data(&buf);
 
@@ -57,6 +60,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!("{}", encoded);
         }
     }
+
+    huffman::print_throughput("total throughput", input_len, start.elapsed());
 
     Ok(())
 }

@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some(path) => {
             let mut out_file = BufWriter::with_capacity(1024 * 8, File::create(path)?);
             encoder.write_header(&mut out_file)?;
-            encoder.encode_all(&mut buf.as_slice(), &mut out_file)?;
+            encoder.encode_parallel(&mut buf.as_slice(), &mut out_file)?;
             out_file.flush()?;
         }
         None => {

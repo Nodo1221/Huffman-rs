@@ -5,6 +5,7 @@ use std::fs::File;
 use std::io::{self, BufReader, Read, Write};
 use std::path::Path;
 
+
 use crate::bits::{BitData};
 use crate::queue::{Node, Queue};
 
@@ -143,6 +144,80 @@ impl HuffEncoder {
         recurse(tree, 0, 0, &mut codes);
 
         codes
+    }
+
+    pub fn encode_parallel(&self, mut reader: impl Read + Send, writer: impl Write + Send) -> io::Result<()> {
+        use std::sync::mpsc;
+        use std::sync::{Arc, Mutex};
+        use std::collections::BTreeMap;
+
+        let lookup = self.lookup; // Copy
+        let n = rayon::current_num_threads();
+
+        let (work_tx, work_rx) = mpsc::sync_channel::<(usize, Vec<u8>)>(n * 2);
+        let work_rx = Arc::new(Mutex::new(work_rx));
+        let (result_tx, result_rx) = mpsc::sync_channel::<(usize, Box<BitData>)>(n * 2);
+
+        std::thread::scope(|ts| {
+            // Reader: sends indexed chunks; dropping work_tx signals workers
+            let reader_h = ts.spawn(move || -> io::Result<()> {
+                let mut buf = vec![0u8; 128 * 1024];
+                let mut idx = 0;
+                loop {
+                    let chunk = HuffEncoder::read_chunk(&mut reader, &mut buf)?;
+                    if chunk.is_empty() { break; }
+                    if work_tx.send((idx, chunk.to_vec())).is_err() { break; }
+                    idx += 1;
+                }
+                Ok(())
+            });
+
+            // Coordinator: runs rayon workers; dropping result_tx signals writer
+            let coord_h = ts.spawn(move || {
+                rayon::scope(|rs| {
+                    for _ in 0..n {
+                        let work_rx = Arc::clone(&work_rx);
+                        let result_tx = result_tx.clone();
+                        rs.spawn(move |_| loop {
+                            match work_rx.lock().unwrap().recv() {
+                                Ok((idx, chunk)) => {
+                                    let mut out = Box::new(BitData::new());
+                                    out.reset();
+                                    for &byte in &chunk {
+                                        let (code, len) = lookup[byte as usize];
+                                        out.write(code, len);
+                                    }
+                                    let _ = result_tx.send((idx, out));
+                                }
+                                Err(_) => break,
+                            }
+                        });
+                    }
+                });
+                // result_tx (original) dropped here, after all clones are gone
+            });
+
+            // Writer: reorders out-of-sequence chunks via BTreeMap, writes in order
+            let writer_h = ts.spawn(move || -> io::Result<()> {
+                let mut writer = writer;
+                let mut pending = BTreeMap::<usize, Box<BitData>>::new();
+                let mut next = 0;
+                while let Ok((idx, mut data)) = result_rx.recv() {
+                    pending.insert(idx, data);
+                    while let Some(mut chunk) = pending.remove(&next) {
+                        HuffEncoder::write_chunk(&mut writer, &mut chunk)?;
+                        next += 1;
+                    }
+                }
+                writer.flush()
+            });
+
+            reader_h.join().unwrap()?;
+            coord_h.join().unwrap();
+            writer_h.join().unwrap()?;
+
+            Ok(())
+        })
     }
 }
 

@@ -1,9 +1,10 @@
 use std::error::Error;
 use huffman::huffman::{HuffDecoder, HuffEncoder};
+use huffman::bits::BitData;
 
 use clap::{Parser, CommandFactory};
 use std::fs::File;
-use std::io::{self, Read, Write, IsTerminal};
+use std::io::{self, Read, Write, BufWriter, IsTerminal};
 use std::time::Instant;
 use std::path::PathBuf;
 
@@ -50,14 +51,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match args.output {
         Some(path) => {
-            let mut out_file = File::create(path)?;
+            let mut out_file = BufWriter::with_capacity(1024 * 8, File::create(path)?);
             encoder.write_header(&mut out_file)?;
-            encoder.encode_all(&mut io::Cursor::new(&buf), &mut out_file)?;
+            encoder.encode_all(&mut buf.as_slice(), &mut out_file)?;
+            out_file.flush()?;
         }
         None => {
             println!("{}", encoder);
-            let encoded = encoder.encode_chunk(&buf);
-            println!("{}", encoded);
+            let mut out_buf = BitData::new();
+            encoder.encode_chunk(&buf, &mut out_buf);
+            println!("{}", out_buf);
         }
     }
 

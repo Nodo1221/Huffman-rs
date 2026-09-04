@@ -5,12 +5,12 @@ use std::fs::File;
 use std::io::{self, BufReader, Read, Write};
 use std::path::Path;
 
-
+use crate::config::{CHUNK_SIZE, PAGE_SIZE};
 use crate::bits::{BitData};
 use crate::queue::{Node, Queue};
 
 const VERSION: u8 = 1;
-const PAGE_SIZE: usize = (128.0 * 1024.0 / u64::BITS as f32) as usize;
+// const PAGE_SIZE: usize = (128.0 * 1024.0 / u64::BITS as f32) as usize;
 
 pub struct HuffEncoder {
     tree: Box<Node>,
@@ -57,32 +57,6 @@ impl HuffEncoder {
             let (code, len) = self.lookup[byte as usize];
             out.write(code, len);
         }
-    }
-
-    // Sequential demo encode all
-    fn read_chunk<'a>(reader: &mut impl Read, buf: &'a mut [u8]) -> io::Result<&'a [u8]> {
-        let mut total = 0;
-        while total < buf.len() {
-            match reader.read(&mut buf[total..])? {
-                0 => break,
-                n => total += n,
-            }
-        }
-        Ok(&buf[..total])
-    }
-
-    pub fn encode_all(&self, reader: &mut impl Read, writer: &mut impl Write) -> io::Result<()> {
-        let mut in_buf = [0u8; PAGE_SIZE];
-        let mut out_buf = BitData::new();
-
-        loop {
-            let chunk = Self::read_chunk(reader, &mut in_buf)?;
-            if chunk.is_empty() { break; }
-            self.encode_chunk(chunk, &mut out_buf);
-            Self::write_chunk(writer, &mut out_buf)?;
-        }
-
-        Ok(())
     }
 
     // Write a chunk to writer. Precede each with offset (number of written u64's)
@@ -146,66 +120,102 @@ impl HuffEncoder {
         codes
     }
 
+    fn read_chunk(reader: &mut impl Read, buf: &mut Vec<u8>) -> io::Result<usize> {
+        let mut total = 0;
+        while total < buf.len() {
+            match reader.read(&mut buf[total..])? {
+                0 => break,
+                n => total += n,
+            }
+        }
+        Ok(total)
+    }
+
+    pub fn encode_all(&self, reader: &mut impl Read, writer: &mut impl Write) -> io::Result<()> {
+        let mut in_buf = vec![0u8; CHUNK_SIZE];
+        let mut out_buf = BitData::new();
+        loop {
+            let len = Self::read_chunk(reader, &mut in_buf)?;
+            if len == 0 { break; }
+            self.encode_chunk(&in_buf[..len], &mut out_buf);
+            Self::write_chunk(writer, &mut out_buf)?;
+        }
+        Ok(())
+    }
+
     pub fn encode_parallel(&self, mut reader: impl Read + Send, writer: impl Write + Send) -> io::Result<()> {
         use std::sync::mpsc;
-        use std::sync::{Arc, Mutex};
         use std::collections::BTreeMap;
 
-        let lookup = self.lookup; // Copy
         let n = rayon::current_num_threads();
+        let lookup = self.lookup;
 
-        let (work_tx, work_rx) = mpsc::sync_channel::<(usize, Vec<u8>)>(n * 2);
-        let work_rx = Arc::new(Mutex::new(work_rx));
-        let (result_tx, result_rx) = mpsc::sync_channel::<(usize, Box<BitData>)>(n * 2);
+        // reader -> workers: (chunk_idx, input_buf, filled_len)
+        let (work_txs, work_rxs): (Vec<_>, Vec<_>) = (0..n)
+            .map(|_| mpsc::sync_channel::<(usize, Vec<u8>, usize)>(1))
+            .unzip();
+
+        // workers -> reader: returns input buffers after encoding
+        let (pool_tx, pool_rx) = mpsc::sync_channel::<Vec<u8>>(n);
+        for _ in 0..n {
+            pool_tx.send(vec![0u8; CHUNK_SIZE]).unwrap();
+        }
+
+        // workers -> writer
+        let (result_tx, result_rx) = mpsc::sync_channel::<(usize, Box<BitData>)>(n);
+
+        // writer -> workers: returns BitData after writing
+        let (return_txs, return_rxs): (Vec<_>, Vec<_>) = (0..n)
+            .map(|_| mpsc::sync_channel::<Box<BitData>>(1))
+            .unzip();
 
         std::thread::scope(|ts| {
-            // Reader: sends indexed chunks; dropping work_tx signals workers
             let reader_h = ts.spawn(move || -> io::Result<()> {
-                let mut buf = vec![0u8; 128 * 1024];
                 let mut idx = 0;
                 loop {
-                    let chunk = HuffEncoder::read_chunk(&mut reader, &mut buf)?;
-                    if chunk.is_empty() { break; }
-                    if work_tx.send((idx, chunk.to_vec())).is_err() { break; }
+                    let mut buf = pool_rx.recv().unwrap();
+                    let len = Self::read_chunk(&mut reader, &mut buf)?;
+                    if len == 0 { break; }
+                    if work_txs[idx % n].send((idx, buf, len)).is_err() { break; }
                     idx += 1;
                 }
                 Ok(())
             });
 
-            // Coordinator: runs rayon workers; dropping result_tx signals writer
-            let coord_h = ts.spawn(move || {
-                rayon::scope(|rs| {
-                    for _ in 0..n {
-                        let work_rx = Arc::clone(&work_rx);
-                        let result_tx = result_tx.clone();
-                        rs.spawn(move |_| loop {
-                            match work_rx.lock().unwrap().recv() {
-                                Ok((idx, chunk)) => {
-                                    let mut out = Box::new(BitData::new());
-                                    out.reset();
-                                    for &byte in &chunk {
-                                        let (code, len) = lookup[byte as usize];
-                                        out.write(code, len);
-                                    }
-                                    let _ = result_tx.send((idx, out));
-                                }
-                                Err(_) => break,
+            let worker_handles: Vec<_> = work_rxs.into_iter()
+                .zip(return_rxs)
+                .map(|(work_rx, return_rx)| {
+                    let result_tx = result_tx.clone();
+                    let pool_tx = pool_tx.clone();
+                    ts.spawn(move || {
+                        let mut out = Box::new(BitData::new());
+                        while let Ok((idx, buf, len)) = work_rx.recv() {
+                            out.reset();
+                            for &byte in &buf[..len] {
+                                let (code, code_len) = lookup[byte as usize];
+                                out.write(code, code_len);
                             }
-                        });
-                    }
-                });
-                // result_tx (original) dropped here, after all clones are gone
-            });
+                            let _ = pool_tx.send(buf); // return input buffer immediately after encoding
+                            if result_tx.send((idx, out)).is_err() { break; }
+                            out = match return_rx.recv() {
+                                Ok(b) => b,
+                                Err(_) => break,
+                            };
+                        }
+                    })
+                })
+                .collect();
+            drop(result_tx);
 
-            // Writer: reorders out-of-sequence chunks via BTreeMap, writes in order
             let writer_h = ts.spawn(move || -> io::Result<()> {
                 let mut writer = writer;
                 let mut pending = BTreeMap::<usize, Box<BitData>>::new();
                 let mut next = 0;
-                while let Ok((idx, mut data)) = result_rx.recv() {
+                while let Ok((idx, data)) = result_rx.recv() {
                     pending.insert(idx, data);
                     while let Some(mut chunk) = pending.remove(&next) {
-                        HuffEncoder::write_chunk(&mut writer, &mut chunk)?;
+                        Self::write_chunk(&mut writer, &mut chunk)?;
+                        let _ = return_txs[next % n].send(chunk);
                         next += 1;
                     }
                 }
@@ -213,9 +223,8 @@ impl HuffEncoder {
             });
 
             reader_h.join().unwrap()?;
-            coord_h.join().unwrap();
+            for h in worker_handles { h.join().unwrap(); }
             writer_h.join().unwrap()?;
-
             Ok(())
         })
     }

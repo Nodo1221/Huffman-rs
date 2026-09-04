@@ -1,6 +1,7 @@
 use std::fmt;
+use crate::config::{CHUNK_SIZE, PAGE_SIZE};
 
-pub const PAGE_SIZE: usize = (128.0 * 1024.0 * 1.5 / u64::BITS as f32) as usize;
+// pub const PAGE_SIZE: usize = (128.0 * 1024.0 * 1.5 / u64::BITS as f32) as usize;
 
 pub struct BitData {
     pub data: [u64; PAGE_SIZE],

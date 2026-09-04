@@ -14,3 +14,6 @@ rayon = "1.12.0"
 [features]
 hotpath = ["hotpath/hotpath"]
 hotpath-alloc = ["hotpath/hotpath-alloc"]
+
+[profile.release]
+debug = true

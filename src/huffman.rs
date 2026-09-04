@@ -62,15 +62,16 @@ impl HuffEncoder {
     // Write a chunk to writer. Precede each with offset (number of written u64's)
     pub fn write_chunk(writer: &mut impl Write, chunk: &mut BitData) -> io::Result<()> {
         let offset = chunk.capacity;
-
         chunk.flush();
         writer.write_all(&offset.to_be_bytes())?;
         writer.write_all(&(chunk.index as u16).to_be_bytes())?;
-        for block in &chunk.data[..chunk.index] {
-            writer.write_all(&block.to_be_bytes())?;
+        for block in &mut chunk.data[..chunk.index] {
+            *block = block.to_be();
         }
-
-        Ok(())
+        let bytes = unsafe {
+            std::slice::from_raw_parts(chunk.data.as_ptr() as *const u8, chunk.index * 8)
+        };
+        writer.write_all(bytes)
     }
 
     // Write header to writer
@@ -150,30 +151,35 @@ impl HuffEncoder {
         let n = rayon::current_num_threads();
         let lookup = self.lookup;
 
-        // reader -> workers: (chunk_idx, input_buf, filled_len)
+        // Round-robin work channels: reader -> workers
         let (work_txs, work_rxs): (Vec<_>, Vec<_>) = (0..n)
             .map(|_| mpsc::sync_channel::<(usize, Vec<u8>, usize)>(1))
             .unzip();
 
-        // workers -> reader: returns input buffers after encoding
-        let (pool_tx, pool_rx) = mpsc::sync_channel::<Vec<u8>>(n);
+        // Input buffer pool: n buffers circulating between reader and workers
+        let (in_pool_tx, in_pool_rx) = mpsc::sync_channel::<Vec<u8>>(n);
         for _ in 0..n {
-            pool_tx.send(vec![0u8; CHUNK_SIZE]).unwrap();
+            in_pool_tx.send(vec![0u8; CHUNK_SIZE]).unwrap();
         }
 
-        // workers -> writer
-        let (result_tx, result_rx) = mpsc::sync_channel::<(usize, Box<BitData>)>(n);
-
-        // writer -> workers: returns BitData after writing
+        // Per-worker BitData pool, pre-populated with 2 buffers each
         let (return_txs, return_rxs): (Vec<_>, Vec<_>) = (0..n)
-            .map(|_| mpsc::sync_channel::<Box<BitData>>(1))
+            .map(|_| {
+                let (tx, rx) = mpsc::sync_channel::<Box<BitData>>(2);
+                tx.send(Box::new(BitData::new())).unwrap();
+                tx.send(Box::new(BitData::new())).unwrap();
+                (tx, rx)
+            })
             .unzip();
+
+        // Workers -> writer
+        let (result_tx, result_rx) = mpsc::sync_channel::<(usize, Box<BitData>)>(2 * n);
 
         std::thread::scope(|ts| {
             let reader_h = ts.spawn(move || -> io::Result<()> {
                 let mut idx = 0;
                 loop {
-                    let mut buf = pool_rx.recv().unwrap();
+                    let mut buf = in_pool_rx.recv().unwrap();
                     let len = Self::read_chunk(&mut reader, &mut buf)?;
                     if len == 0 { break; }
                     if work_txs[idx % n].send((idx, buf, len)).is_err() { break; }
@@ -186,21 +192,17 @@ impl HuffEncoder {
                 .zip(return_rxs)
                 .map(|(work_rx, return_rx)| {
                     let result_tx = result_tx.clone();
-                    let pool_tx = pool_tx.clone();
+                    let in_pool_tx = in_pool_tx.clone();
                     ts.spawn(move || {
-                        let mut out = Box::new(BitData::new());
                         while let Ok((idx, buf, len)) = work_rx.recv() {
+                            let mut out = return_rx.recv().unwrap();
                             out.reset();
                             for &byte in &buf[..len] {
                                 let (code, code_len) = lookup[byte as usize];
                                 out.write(code, code_len);
                             }
-                            let _ = pool_tx.send(buf); // return input buffer immediately after encoding
+                            let _ = in_pool_tx.send(buf);
                             if result_tx.send((idx, out)).is_err() { break; }
-                            out = match return_rx.recv() {
-                                Ok(b) => b,
-                                Err(_) => break,
-                            };
                         }
                     })
                 })

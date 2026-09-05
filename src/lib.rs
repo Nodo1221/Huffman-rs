@@ -1,7 +1,7 @@
 pub mod huffman;
 pub mod bits;
 pub mod queue;
-mod config;
+pub mod config;
 
 use std::time::Instant;
 

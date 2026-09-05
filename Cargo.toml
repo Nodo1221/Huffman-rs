@@ -16,4 +16,7 @@ hotpath = ["hotpath/hotpath"]
 hotpath-alloc = ["hotpath/hotpath-alloc"]
 
 [profile.release]
-debug = true
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"

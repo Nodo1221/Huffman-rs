@@ -5,7 +5,7 @@ use std::fs::File;
 use std::io::{self, BufReader, Read, Write};
 use std::path::Path;
 
-use crate::config::{CHUNK_SIZE, PAGE_SIZE};
+use crate::config::CHUNK_SIZE;
 use crate::bits::{BitData};
 use crate::queue::{Node, Queue};
 
